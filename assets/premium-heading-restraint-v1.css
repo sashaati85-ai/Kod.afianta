@@ -1,0 +1,18 @@
+.premium-page .premium-section-heading h2,
+.premium-page .premium-final-cta h2 {
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: #352217;
+  color: #352217 !important;
+  text-shadow: none;
+}
+
+.premium-page .premium-hero-title {
+  -webkit-text-fill-color: transparent;
+}
+
+.premium-page .premium-section::before,
+.premium-page .premium-final-cta::before {
+  opacity: .86;
+}
