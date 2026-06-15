@@ -1,0 +1,132 @@
+@media (max-width: 680px) {
+  html.questionnaire-mobile-fix .page-shell {
+    min-height: auto;
+  }
+
+  html.questionnaire-mobile-fix .page-content {
+    padding-top: 16px;
+    padding-bottom: 14px;
+  }
+
+  html.questionnaire-mobile-fix .page-back {
+    margin-bottom: 8px;
+  }
+
+  html.questionnaire-mobile-fix .page-header {
+    margin-bottom: 12px;
+  }
+
+  html.questionnaire-mobile-fix .page-title {
+    margin-bottom: 4px;
+  }
+
+  html.questionnaire-mobile-fix .page-description {
+    font-size: 16px;
+    line-height: 1.42;
+  }
+
+  html.questionnaire-mobile-fix .page-main {
+    gap: 10px;
+  }
+
+  html.questionnaire-mobile-fix .progress-box {
+    margin-top: 0;
+    margin-bottom: 8px;
+    padding: 4px 0;
+  }
+
+  html.questionnaire-mobile-fix .stack-gap {
+    gap: 12px;
+  }
+
+  html.questionnaire-mobile-fix .section-heading {
+    gap: 6px;
+  }
+
+  html.questionnaire-mobile-fix .stack-gap > h2,
+  html.questionnaire-mobile-fix .stack-gap > .vkuiTitle,
+  html.questionnaire-mobile-fix .stack-gap > [class*="Title"] {
+    margin-bottom: 6px;
+  }
+
+  html.questionnaire-mobile-fix .stack-gap > p,
+  html.questionnaire-mobile-fix .stack-gap > .vkuiText,
+  html.questionnaire-mobile-fix .stack-gap > [class*="Text"] {
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.45;
+  }
+
+  html.questionnaire-mobile-fix .section-description {
+    max-width: 100%;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.45;
+  }
+
+  html.questionnaire-mobile-fix .form-card {
+    gap: 22px;
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  html.questionnaire-mobile-fix .form-card input {
+    min-height: 54px;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  html.questionnaire-mobile-fix .form-card input::placeholder {
+    color: rgba(74, 51, 40, .54);
+  }
+
+  html.questionnaire-mobile-fix .form-card [class*="FormField"],
+  html.questionnaire-mobile-fix .form-card [class*="Input"] {
+    min-height: 54px;
+  }
+
+  html.questionnaire-mobile-fix .page-footer {
+    position: static;
+    inset: auto;
+    display: grid;
+    gap: 12px;
+    width: auto;
+    margin: 14px auto 0;
+    padding: 0 16px 24px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  html.questionnaire-mobile-fix .page-footer::before,
+  html.questionnaire-mobile-fix .page-footer::after {
+    display: none;
+  }
+
+  html.questionnaire-mobile-fix .page-footer button {
+    min-height: 54px;
+    font-size: 16px;
+  }
+
+  html.questionnaire-mobile-fix .page-footer p,
+  html.questionnaire-mobile-fix .page-footer .vkuiText,
+  html.questionnaire-mobile-fix .page-footer [class*="Text"] {
+    margin: 0;
+    color: rgba(74, 51, 40, .68);
+    font-size: 12px;
+    line-height: 1.45;
+    text-align: center;
+  }
+}
+
+@media (max-width: 374px) {
+  html.questionnaire-mobile-fix .page-content {
+    padding-top: 14px;
+  }
+
+  html.questionnaire-mobile-fix .form-card {
+    padding: 21px;
+  }
+}
