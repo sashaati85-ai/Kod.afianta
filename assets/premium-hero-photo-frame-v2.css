@@ -1,0 +1,90 @@
+.premium-portrait-card {
+  padding: clamp(18px, 3.2vw, 30px);
+  box-sizing: border-box;
+}
+
+.premium-portrait-card img {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  box-sizing: border-box;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 14px 34px rgba(91, 61, 34, .08),
+    0 0 0 1px rgba(188, 137, 66, .08),
+    inset 0 1px rgba(255, 255, 255, .88);
+  filter: drop-shadow(0 16px 28px rgba(98, 67, 37, .12)) saturate(.82) brightness(1.04) contrast(.96);
+}
+
+@media (min-width: 821px) {
+  .premium-portrait-card img {
+    width: 94%;
+    max-width: 94%;
+    border-radius: 24px;
+  }
+}
+
+@media (max-width: 820px) {
+  .premium-portrait-card {
+    padding: 18px;
+  }
+
+  .premium-portrait-card::before {
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .premium-portrait-card img {
+    width: 92%;
+    max-width: 92%;
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 680px) {
+  .premium-portrait-card {
+    width: min(100%, 250px);
+    padding: 16px;
+    border-radius: 26px;
+  }
+
+  .premium-portrait-card::before {
+    top: 10px;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    border-radius: 20px;
+  }
+
+  .premium-portrait-card img {
+    width: 96%;
+    max-width: 96%;
+    border-radius: 18px;
+    box-shadow:
+      0 10px 24px rgba(91, 61, 34, .075),
+      0 0 0 1px rgba(188, 137, 66, .075),
+      inset 0 1px rgba(255, 255, 255, .86);
+  }
+}
+
+@media (max-width: 420px) {
+  .premium-portrait-card {
+    width: min(100%, 238px);
+    padding: 15px;
+  }
+
+  .premium-portrait-card img {
+    width: 96%;
+    max-width: 96%;
+    border-radius: 16px;
+  }
+}
