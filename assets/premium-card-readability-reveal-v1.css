@@ -1,0 +1,118 @@
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card,
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card {
+  --premium-card-y: 0px;
+  min-height: 138px;
+  padding: 20px 21px 21px;
+  transform: translateY(var(--premium-card-y));
+}
+
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(2),
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(2) {
+  --premium-card-y: 7px;
+}
+
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(3),
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(4) {
+  --premium-card-y: 3px;
+}
+
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(5),
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(5) {
+  --premium-card-y: -2px;
+}
+
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card p,
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card p {
+  color: #3b271f;
+  font-size: 18px;
+  font-weight: 450;
+  line-height: 1.56;
+  letter-spacing: 0;
+}
+
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card p {
+  padding-right: 34px;
+}
+
+@media (hover: hover) {
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card:hover,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:hover,
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(2):hover,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(2):hover,
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(3):hover,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(4):hover,
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(5):hover,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(5):hover {
+    transform: translateY(calc(var(--premium-card-y) - 4px));
+  }
+}
+
+.premium-page main > .premium-section:nth-of-type(3) .premium-info-card,
+.premium-page main > .premium-section:nth-of-type(4) .premium-info-card,
+.premium-books-grid .premium-book-card,
+.premium-experts-card p,
+.premium-final-cta {
+  animation: none !important;
+}
+
+html.card-reveal-enabled .premium-card-reveal {
+  opacity: 0;
+  transform: translateY(calc(var(--premium-card-y, 0px) + 18px));
+  transition:
+    opacity 620ms cubic-bezier(.22, 1, .36, 1),
+    transform 620ms cubic-bezier(.22, 1, .36, 1);
+  transition-delay: var(--card-reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+html.card-reveal-enabled .premium-card-reveal.is-card-visible {
+  opacity: 1;
+  transform: translateY(var(--premium-card-y, 0px));
+}
+
+@media (min-width: 681px) and (max-width: 1024px) {
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card {
+    min-height: 132px;
+    padding: 19px 20px 20px;
+  }
+
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card p,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card p {
+    font-size: 17px;
+    line-height: 1.55;
+  }
+}
+
+@media (max-width: 680px) {
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card,
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card:nth-child(n),
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(n) {
+    --premium-card-y: 0px;
+    min-height: auto;
+    padding: 20px 21px;
+    transform: translateY(0);
+  }
+
+  .premium-page main > .premium-section:nth-of-type(3) .premium-info-card p,
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card p {
+    color: #3b271f;
+    font-size: 16px;
+    font-weight: 450;
+    line-height: 1.52;
+  }
+
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card p {
+    padding-right: 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.card-reveal-enabled .premium-card-reveal,
+  html.card-reveal-enabled .premium-card-reveal.is-card-visible {
+    opacity: 1;
+    transform: translateY(var(--premium-card-y, 0px));
+    transition: none;
+  }
+}
