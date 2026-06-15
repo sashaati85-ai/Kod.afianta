@@ -1,0 +1,155 @@
+.premium-page .premium-experts-section .premium-experts-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.premium-page .premium-experts-section .premium-experts-card p {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 100%;
+  margin: 0;
+  padding: 23px 21px 25px;
+  border: 1px solid rgba(184, 134, 59, .24);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 250, 240, .96), rgba(255, 250, 240, 0) 48%),
+    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(250, 238, 216, .72));
+  box-shadow:
+    0 18px 42px rgba(74, 48, 28, .09),
+    0 4px 14px rgba(184, 134, 59, .08),
+    inset 0 1px rgba(255, 255, 255, .78);
+  color: #4a3328;
+  font-size: 16.5px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.premium-page .premium-experts-section .premium-experts-card p::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  right: 21px;
+  bottom: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(184, 134, 59, .34), rgba(184, 134, 59, 0));
+  opacity: .48;
+  pointer-events: none;
+}
+
+.premium-page .premium-experts-section .premium-experts-card p:nth-child(1) {
+  transform: translateY(-3px);
+}
+
+.premium-page .premium-experts-section .premium-experts-card p:nth-child(2) {
+  transform: translateY(5px);
+}
+
+.premium-page .premium-experts-section .premium-experts-card p:nth-child(3) {
+  transform: translateY(1px);
+}
+
+.premium-page .premium-experts-section .premium-expert-number {
+  width: max-content;
+  color: rgba(154, 105, 43, .58);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .16em;
+}
+
+.premium-page .premium-experts-section .premium-expert-title {
+  color: #352217;
+  font-family: var(--font-display, "Playfair Display", serif);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+
+.premium-page .premium-experts-section .premium-expert-text {
+  color: #4a3328;
+  font-size: 16.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+html.card-reveal-enabled .premium-page .premium-experts-section .premium-experts-card p.premium-card-reveal {
+  transform: translateY(calc(var(--premium-card-y, 0px) + 16px));
+}
+
+html.card-reveal-enabled .premium-page .premium-experts-section .premium-experts-card p.premium-card-reveal.is-card-visible {
+  transform: translateY(var(--premium-card-y, 0px));
+}
+
+@media (min-width: 681px) and (max-width: 1024px) {
+  .premium-page .premium-experts-section .premium-experts-card {
+    gap: 14px;
+  }
+
+  .premium-page .premium-experts-section .premium-experts-card p {
+    padding: 21px 19px 23px;
+  }
+
+  .premium-page .premium-experts-section .premium-expert-title {
+    font-size: 18.5px;
+  }
+
+  .premium-page .premium-experts-section .premium-expert-text {
+    font-size: 16px;
+    line-height: 1.52;
+  }
+}
+
+@media (max-width: 680px) {
+  .premium-page .premium-experts-section .premium-section-heading h2 {
+    font-size: clamp(30px, 9vw, 39px);
+    line-height: 1.06;
+  }
+
+  .premium-page .premium-experts-section .premium-experts-card {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .premium-page .premium-experts-section .premium-experts-card p,
+  .premium-page .premium-experts-section .premium-experts-card p:nth-child(n) {
+    --premium-card-y: 0px;
+    min-height: auto;
+    padding: 20px 21px 22px;
+    transform: translateY(0);
+  }
+
+  .premium-page .premium-experts-section .premium-expert-number {
+    font-size: 12px;
+  }
+
+  .premium-page .premium-experts-section .premium-expert-title {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .premium-page .premium-experts-section .premium-expert-text {
+    font-size: 16px;
+    line-height: 1.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .premium-page .premium-experts-section .premium-experts-card p,
+  .premium-page .premium-experts-section .premium-experts-card p:nth-child(n),
+  html.card-reveal-enabled .premium-page .premium-experts-section .premium-experts-card p.premium-card-reveal,
+  html.card-reveal-enabled .premium-page .premium-experts-section .premium-experts-card p.premium-card-reveal.is-card-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
