@@ -4,6 +4,7 @@
     ".premium-page main > .premium-section:nth-of-type(4) .premium-info-card",
     ".premium-books-grid .premium-book-card",
     ".premium-experts-card p",
+    ".premium-experts-reveal-item",
     ".premium-final-cta",
   ];
 
@@ -37,6 +38,7 @@
       element.closest(".premium-card-grid") ||
       element.closest(".premium-books-grid") ||
       element.closest(".premium-experts-card") ||
+      element.closest(".premium-experts-layout") ||
       element.parentElement;
     const siblings = Array.from(group.querySelectorAll(selector)).filter((item) =>
       group.contains(item)
