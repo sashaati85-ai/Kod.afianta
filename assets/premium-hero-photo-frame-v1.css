@@ -25,8 +25,8 @@
 
 @media (min-width: 821px) {
   .premium-portrait-card img {
-    width: 90%;
-    max-width: 90%;
+    width: 94%;
+    max-width: 94%;
     border-radius: 24px;
   }
 }
@@ -44,15 +44,15 @@
   }
 
   .premium-portrait-card img {
-    width: 88%;
-    max-width: 88%;
+    width: 90%;
+    max-width: 90%;
     border-radius: 18px;
   }
 }
 
 @media (max-width: 680px) {
   .premium-portrait-card {
-    width: min(100%, 224px);
+    width: min(100%, 250px);
     padding: 16px;
     border-radius: 26px;
   }
@@ -66,8 +66,8 @@
   }
 
   .premium-portrait-card img {
-    width: 86%;
-    max-width: 86%;
+    width: 89%;
+    max-width: 89%;
     border-radius: 18px;
     box-shadow:
       0 10px 24px rgba(91, 61, 34, .075),
@@ -78,13 +78,13 @@
 
 @media (max-width: 420px) {
   .premium-portrait-card {
-    width: min(100%, 212px);
+    width: min(100%, 238px);
     padding: 15px;
   }
 
   .premium-portrait-card img {
-    width: 84%;
-    max-width: 84%;
+    width: 88%;
+    max-width: 88%;
     border-radius: 16px;
   }
 }
