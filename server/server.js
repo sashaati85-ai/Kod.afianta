@@ -10,6 +10,7 @@ const AI_MODEL = process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
 const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://api.proxyapi.ru/openai/v1").replace(/\/$/, "");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
+const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
 const reportCache = new Map();
 
 const MIME_TYPES = {
@@ -227,7 +228,13 @@ async function callAi(context) {
     : "";
   const parsed = safeJsonParse(content);
   const report = normalizeAiReport(parsed);
-  if (!report) throw new Error("AI returned invalid report JSON");
+  if (!report) {
+    if (DEBUG_AI_REPORT) {
+      console.error("[generate-free-report] invalid AI content:", content.slice(0, 3000));
+      console.error("[generate-free-report] parsed AI keys:", parsed && Object.keys(parsed));
+    }
+    throw new Error("AI returned invalid report JSON");
+  }
   return report;
 }
 
