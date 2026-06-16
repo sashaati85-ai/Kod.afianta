@@ -41,6 +41,14 @@ const REQUIRED_AI_KEYS = [
   "paidReportTeaserItems",
 ];
 
+const FALLBACK_TEASER_ITEMS = [
+  "Где именно вы теряете внутреннюю опору",
+  "Какие реакции незаметно усиливают напряжение",
+  "Какой сценарий начал закрепляться между вами",
+  "Что сейчас лучше не делать, чтобы не ухудшить контакт",
+  "Какой следующий шаг поможет вернуть больше ясности",
+];
+
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -78,6 +86,13 @@ function clampText(value, maxLength) {
 
 function normalizeAiReport(input) {
   if (!input || typeof input !== "object") return null;
+  const teaserItems = Array.isArray(input.paidReportTeaserItems)
+    ? input.paidReportTeaserItems.map((item) => clampText(item, 140)).filter((item) => item.length >= 8)
+    : [];
+  while (teaserItems.length < 5) {
+    teaserItems.push(FALLBACK_TEASER_ITEMS[teaserItems.length]);
+  }
+
   const report = {
     introText: clampText(input.introText, 650),
     annaMeaningText: clampText(input.annaMeaningText, 750),
@@ -88,19 +103,13 @@ function normalizeAiReport(input) {
     alexanderInnerFeelingText: clampText(input.alexanderInnerFeelingText, 450),
     alexanderRecommendation: clampText(input.alexanderRecommendation, 400),
     nextStepText: clampText(input.nextStepText, 650),
-    paidReportTeaserItems: Array.isArray(input.paidReportTeaserItems)
-      ? input.paidReportTeaserItems.slice(0, 5).map((item) => clampText(item, 140))
-      : [],
+    paidReportTeaserItems: teaserItems.slice(0, 5),
   };
 
   if (REQUIRED_AI_KEYS.some((key) => {
     if (key === "paidReportTeaserItems") return false;
     return report[key].length < 8;
   })) {
-    return null;
-  }
-
-  if (report.paidReportTeaserItems.length !== 5 || report.paidReportTeaserItems.some((item) => item.length < 8)) {
     return null;
   }
 
