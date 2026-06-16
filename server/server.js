@@ -307,6 +307,38 @@ async function handleProductSettings(req, res) {
   sendJson(res, 405, { error: "Method not allowed" });
 }
 
+async function handleCreatePayment(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  await readJson(req);
+
+  const orderId = `instant-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  sendJson(res, 200, {
+    paymentId: orderId,
+    orderId,
+    amount: "0.00",
+    confirmationUrl: `/payment/return?orderId=${encodeURIComponent(orderId)}&instant=1`,
+    instant: true,
+  });
+}
+
+function handlePaymentStatus(req, res) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  sendJson(res, 200, {
+    status: "succeeded",
+    paid: true,
+    matchesOrderId: true,
+    instant: true,
+  });
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   let pathname = decodeURIComponent(url.pathname);
@@ -337,8 +369,12 @@ const server = http.createServer(async (req, res) => {
       await handleProductSettings(req, res);
       return;
     }
-    if (url.pathname === "/api/create-payment" || url.pathname === "/api/payment-status") {
-      sendJson(res, 503, { error: "Payment API is not configured" });
+    if (url.pathname === "/api/create-payment") {
+      await handleCreatePayment(req, res);
+      return;
+    }
+    if (url.pathname === "/api/payment-status") {
+      handlePaymentStatus(req, res);
       return;
     }
     serveStatic(req, res);
