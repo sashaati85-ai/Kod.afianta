@@ -313,7 +313,11 @@ async function handleCreatePayment(req, res) {
     return;
   }
 
-  await readJson(req);
+  try {
+    await readJson(req);
+  } catch (_) {
+    // The instant report flow does not depend on payment payload details.
+  }
 
   const orderId = `instant-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   sendJson(res, 200, {
