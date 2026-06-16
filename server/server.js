@@ -7,7 +7,7 @@ const PORT = Number(process.env.PORT || 3000);
 const SITE_DIR = process.env.SITE_DIR || path.join(__dirname, "site");
 const AI_API_KEY = process.env.AI_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
-const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://api.proxyapi.ru/openai/v1").replace(/\/$/, "");
+const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1").replace(/\/$/, "");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
