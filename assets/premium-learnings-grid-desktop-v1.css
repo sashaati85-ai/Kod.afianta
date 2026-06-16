@@ -1,0 +1,20 @@
+@media (min-width: 1025px) {
+  .premium-page main > .premium-section:nth-of-type(4) .premium-card-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card {
+    grid-column: span 2;
+    width: auto;
+    height: 100%;
+  }
+
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(4) {
+    grid-column: 2 / span 2;
+  }
+
+  .premium-page main > .premium-section:nth-of-type(4) .premium-info-card:nth-child(5) {
+    grid-column: 4 / span 2;
+  }
+}
