@@ -1,0 +1,244 @@
+.ai-paid-report-shell {
+  width: 100%;
+}
+
+.ai-paid-report-status,
+.ai-paid-report {
+  width: 100%;
+  display: grid;
+  gap: 22px;
+}
+
+.ai-paid-report-status-card,
+.ai-paid-card,
+.ai-paid-day,
+.ai-paid-dialogue {
+  border: 1px solid rgba(180, 132, 63, 0.24);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgba(255, 252, 244, 0.96), rgba(247, 236, 216, 0.84)),
+    #fffaf0;
+  box-shadow: 0 22px 60px rgba(82, 49, 25, 0.11);
+}
+
+.ai-paid-report-status-card {
+  padding: 30px;
+}
+
+.ai-paid-status-kicker,
+.ai-paid-kicker {
+  color: #a47a3d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ai-paid-status-title,
+.ai-paid-title {
+  margin: 8px 0 0;
+  color: #2f1b12;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(28px, 4.4vw, 54px);
+  line-height: 1.04;
+  font-weight: 700;
+}
+
+.ai-paid-status-text,
+.ai-paid-lead,
+.ai-paid-text,
+.ai-paid-list li,
+.ai-paid-dialogue p,
+.ai-paid-day p {
+  color: #4a3328;
+  font-size: clamp(16px, 1.35vw, 18px);
+  line-height: 1.55;
+}
+
+.ai-paid-progress {
+  height: 4px;
+  margin-top: 24px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(180, 132, 63, 0.16);
+}
+
+.ai-paid-progress::before {
+  content: "";
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c9964b, #ead19a);
+  animation: aiPaidProgress 1.4s ease-in-out infinite;
+}
+
+@keyframes aiPaidProgress {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+
+.ai-paid-hero {
+  padding: clamp(28px, 5vw, 52px);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 84% 18%, rgba(218, 181, 111, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 251, 242, 0.98), rgba(244, 231, 207, 0.9));
+  border: 1px solid rgba(180, 132, 63, 0.26);
+  box-shadow: 0 28px 76px rgba(82, 49, 25, 0.12);
+}
+
+.ai-paid-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.ai-paid-meta span {
+  padding: 9px 14px;
+  border: 1px solid rgba(180, 132, 63, 0.22);
+  border-radius: 999px;
+  color: #5a3a25;
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
+}
+
+.ai-paid-card {
+  padding: clamp(24px, 3.2vw, 36px);
+}
+
+.ai-paid-card h2,
+.ai-paid-card h3,
+.ai-paid-day h3 {
+  margin: 0;
+  color: #2f1b12;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.12;
+}
+
+.ai-paid-card h2 {
+  font-size: clamp(25px, 3vw, 38px);
+}
+
+.ai-paid-card h3,
+.ai-paid-day h3 {
+  font-size: clamp(20px, 2.1vw, 25px);
+}
+
+.ai-paid-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.ai-paid-mini {
+  padding-top: 16px;
+  border-top: 1px solid rgba(180, 132, 63, 0.2);
+}
+
+.ai-paid-mini strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #7a552d;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ai-paid-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-paid-list li {
+  position: relative;
+  padding-left: 22px;
+}
+
+.ai-paid-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.72em;
+  width: 9px;
+  height: 1px;
+  background: #bc8d49;
+}
+
+.ai-paid-dialogue {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 20px;
+  box-shadow: none;
+}
+
+.ai-paid-dialogue p {
+  margin: 0;
+}
+
+.ai-paid-dialogue strong {
+  color: #7a552d;
+}
+
+.ai-paid-plan {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.ai-paid-day {
+  padding: 22px;
+  box-shadow: 0 16px 42px rgba(82, 49, 25, 0.09);
+}
+
+.ai-paid-day-number {
+  color: rgba(164, 122, 61, 0.62);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.ai-paid-error {
+  padding: 22px;
+  border: 1px solid rgba(147, 81, 53, 0.22);
+  border-radius: 20px;
+  color: #4a3328;
+  background: rgba(255, 248, 239, 0.92);
+}
+
+@media (max-width: 760px) {
+  .ai-paid-report {
+    gap: 18px;
+  }
+
+  .ai-paid-report-status-card,
+  .ai-paid-card,
+  .ai-paid-hero {
+    border-radius: 22px;
+    padding: 22px;
+  }
+
+  .ai-paid-section-grid,
+  .ai-paid-plan {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-paid-meta span {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-paid-progress::before {
+    animation: none;
+    transform: none;
+    width: 100%;
+  }
+}
