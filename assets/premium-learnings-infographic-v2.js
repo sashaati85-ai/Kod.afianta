@@ -59,17 +59,28 @@
     }
 
     cards.slice(0, ITEMS.length).forEach((card, index) => {
-      const text = card.querySelector("p");
-      const marker = card.querySelector("span");
-      if (!text || !marker) return;
-
       card.classList.add("premium-learning-step");
-      marker.classList.add("premium-learning-marker");
-      text.className = "premium-learning-copy";
-      text.innerHTML = [
-        `<span class="premium-learning-title">${ITEMS[index].title}</span>`,
-        `<span class="premium-learning-description">${ITEMS[index].description}</span>`,
-      ].join("");
+      card.textContent = "";
+
+      const marker = document.createElement("div");
+      marker.className = "premium-learning-marker";
+      marker.setAttribute("aria-hidden", "true");
+
+      const copy = document.createElement("div");
+      copy.className = "premium-learning-copy";
+
+      const itemTitle = document.createElement("h3");
+      itemTitle.className = "premium-learning-title";
+      itemTitle.textContent = ITEMS[index].title;
+
+      const description = document.createElement("p");
+      description.className = "premium-learning-description";
+      description.textContent = ITEMS[index].description;
+
+      copy.appendChild(itemTitle);
+      copy.appendChild(description);
+      card.appendChild(marker);
+      card.appendChild(copy);
     });
   }
 

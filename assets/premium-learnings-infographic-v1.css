@@ -95,18 +95,18 @@
   grid-column: 2;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0;
+  gap: clamp(32px, 3.6vw, 44px);
   align-items: start;
   margin: 0;
-  padding: 0 0 0 78px;
+  padding: 0;
 }
 
 .premium-page main > .premium-section.premium-learnings-map .premium-card-grid::before {
   content: "";
   position: absolute;
-  left: 30px;
-  top: 34px;
-  bottom: 34px;
+  left: 26px;
+  top: 26px;
+  bottom: 26px;
   width: 1px;
   background: linear-gradient(
     180deg,
@@ -128,13 +128,14 @@
 .premium-page main > .premium-section.premium-learnings-map .premium-info-card:nth-child(n) {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 28px;
   grid-column: auto;
   align-items: start;
   min-height: 0;
   height: auto;
   width: auto;
-  padding: 0 0 clamp(28px, 3.4vw, 42px);
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -147,9 +148,9 @@
 .premium-page main > .premium-section.premium-learnings-map .premium-info-card:not(:last-child)::after {
   content: "";
   position: absolute;
-  left: 0;
+  left: 80px;
   right: clamp(22px, 7vw, 96px);
-  bottom: clamp(15px, 1.8vw, 22px);
+  bottom: calc(clamp(-22px, -1.8vw, -16px));
   height: 1px;
   background: linear-gradient(90deg, rgba(180, 126, 45, 0.36), rgba(180, 126, 45, 0.14), rgba(180, 126, 45, 0));
 }
@@ -162,15 +163,17 @@
   padding-bottom: 0;
 }
 
+.premium-page main > .premium-section.premium-learnings-map .premium-learning-marker,
 .premium-page main > .premium-section.premium-learnings-map .premium-info-card > .premium-learning-marker {
-  position: absolute;
+  position: relative;
   z-index: 2;
-  left: -78px;
-  top: -4px;
   display: inline-grid;
   place-items: center;
   width: 52px;
   height: 52px;
+  align-self: start;
+  justify-self: center;
+  margin-top: -2px;
   border: 1px solid rgba(178, 120, 39, 0.52);
   border-radius: 999px;
   background:
@@ -189,6 +192,7 @@
     border-color 320ms ease;
 }
 
+.premium-page main > .premium-section.premium-learnings-map .premium-learning-marker::before,
 .premium-page main > .premium-section.premium-learnings-map .premium-info-card > .premium-learning-marker::before {
   content: "✓";
   color: #9b691f;
@@ -199,7 +203,7 @@
 }
 
 .premium-page main > .premium-section.premium-learnings-map .premium-learning-copy {
-  position: relative;
+  position: static;
   z-index: 1;
   display: grid;
   gap: 14px;
@@ -218,6 +222,8 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  margin: 0;
+  padding: 0;
   color: #322018;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(22px, 1.8vw, 29px);
@@ -238,6 +244,8 @@
   background: transparent;
   box-shadow: none;
   max-width: 650px;
+  margin: 0;
+  padding: 0;
   color: rgba(58, 39, 31, 0.74);
   font-family: inherit;
   font-size: clamp(17px, 1.14vw, 20px);
@@ -268,17 +276,21 @@
 }
 
 html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings-map .premium-card-reveal {
-  opacity: 0;
-  transform: translateY(14px);
-  transition:
-    opacity 680ms cubic-bezier(.22, 1, .36, 1),
-    transform 680ms cubic-bezier(.22, 1, .36, 1);
-  transition-delay: var(--card-reveal-delay, 0ms);
+  opacity: 1;
+  transform: translateY(0);
+  transition: transform 320ms ease;
 }
 
 html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings-map .premium-card-reveal.is-card-visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (hover: hover) {
+  html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings-map .premium-card-reveal:hover,
+  html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings-map .premium-card-reveal.is-card-visible:hover {
+    transform: translateX(4px);
+  }
 }
 
 @keyframes premium-learnings-line {
@@ -318,19 +330,32 @@ html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings
 
   .premium-page main > .premium-section.premium-learnings-map .premium-card-grid {
     grid-column: auto;
-    padding-left: 62px;
+    gap: 34px;
   }
 
   .premium-page main > .premium-section.premium-learnings-map .premium-card-grid::before {
-    left: 25px;
+    left: 23px;
   }
 
+  .premium-page main > .premium-section.premium-learnings-map .premium-info-card,
+  .premium-page main > .premium-section.premium-learnings-map .premium-info-card:nth-child(n) {
+    grid-template-columns: 46px minmax(0, 1fr);
+    column-gap: 20px;
+  }
+
+  .premium-page main > .premium-section.premium-learnings-map .premium-info-card:not(:last-child)::after {
+    left: 66px;
+    right: 0;
+    bottom: -18px;
+  }
+
+  .premium-page main > .premium-section.premium-learnings-map .premium-learning-marker,
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card > .premium-learning-marker {
-    left: -62px;
     width: 46px;
     height: 46px;
   }
 
+  .premium-page main > .premium-section.premium-learnings-map .premium-learning-marker::before,
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card > .premium-learning-marker::before {
     font-size: 22px;
   }
@@ -364,28 +389,30 @@ html.card-reveal-enabled .premium-page main > .premium-section.premium-learnings
   }
 
   .premium-page main > .premium-section.premium-learnings-map .premium-card-grid {
-    padding-left: 58px;
+    gap: 32px;
   }
 
   .premium-page main > .premium-section.premium-learnings-map .premium-card-grid::before {
-    left: 23px;
-    top: 28px;
-    bottom: 28px;
+    left: 21px;
+    top: 24px;
+    bottom: 24px;
   }
 
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card,
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card:nth-child(n) {
-    padding-bottom: 34px;
+    grid-template-columns: 42px minmax(0, 1fr);
+    column-gap: 17px;
+    padding-bottom: 0;
   }
 
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card:not(:last-child)::after {
+    left: 59px;
     right: 0;
-    bottom: 17px;
+    bottom: -17px;
   }
 
+  .premium-page main > .premium-section.premium-learnings-map .premium-learning-marker,
   .premium-page main > .premium-section.premium-learnings-map .premium-info-card > .premium-learning-marker {
-    left: -58px;
-    top: -2px;
     width: 42px;
     height: 42px;
     box-shadow:
