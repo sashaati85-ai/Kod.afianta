@@ -3,7 +3,7 @@
 
   var FLOW_KEY = "relationship-code-flow-state";
   var PAYMENT_KEY = "relationship-code-payment-access";
-  var CACHE_PREFIX = "kod-paid-report-ai:";
+  var CACHE_PREFIX = "kod-paid-report-ai-v2:";
 
   function readJsonStorage(storage, key) {
     try {
@@ -94,9 +94,17 @@
     var title = document.querySelector(".page-title");
     var description = document.querySelector(".page-description");
     if (eyebrow) eyebrow.textContent = "Готовый платный отчёт";
-    if (title) title.textContent = "Персональный отчёт для " + (name || "вас");
+    if (title) title.textContent = "Персональный отчёт: " + (name || "ваша ситуация");
     if (description) {
       description.textContent = "Глубокий разбор вашей ситуации, сценария, коммуникации и практических шагов на ближайшие 7 дней.";
+    }
+  }
+
+  function isDebugMode() {
+    try {
+      return new URLSearchParams(window.location.search).get("debug") === "1";
+    } catch (_) {
+      return false;
     }
   }
 
@@ -134,12 +142,14 @@
 
     var hero = el("section", "ai-paid-hero");
     hero.appendChild(el("div", "ai-paid-kicker", "Персональный платный отчёт"));
-    hero.appendChild(el("h1", "ai-paid-title", "Отчёт для " + (answers.name || "вас")));
+    hero.appendChild(el("h1", "ai-paid-title", "Персональный отчёт: " + (answers.name || "ваша ситуация")));
     appendText(hero, "p", "ai-paid-lead", report.intro && report.intro.text);
     var meta = el("div", "ai-paid-meta");
     meta.appendChild(el("span", "", "Число пути: " + (anna.lifePathNumber || "—")));
     meta.appendChild(el("span", "", "Сценарий: " + (alexander.title || "текущий сценарий")));
-    meta.appendChild(el("span", "", "Источник: " + (source === "paid_cache" ? "сохранённый отчёт" : source === "paid_fallback" ? "резервный отчёт" : "AI-генерация")));
+    if (isDebugMode()) {
+      meta.appendChild(el("span", "", "Источник: " + (source === "paid_cache" ? "сохранённый отчёт" : source === "paid_fallback" ? "резервный отчёт" : "AI-генерация")));
+    }
     hero.appendChild(meta);
     root.appendChild(hero);
 
@@ -229,7 +239,7 @@
     root.appendChild(finalCard);
 
     main.appendChild(root);
-    if (source === "paid_fallback") renderError(main);
+    if (source === "paid_fallback" && isDebugMode()) renderError(main);
   }
 
   function isValidReportPayload(payload) {

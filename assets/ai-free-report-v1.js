@@ -3,6 +3,7 @@
 
   var FLOW_KEY = "relationship-code-flow-state";
   var CACHE_PREFIX = "kod-free-report-ai:";
+  var THREE_TO_SIX_DISTANCE_PHRASE = "Тема отдаления уже перестала выглядеть как случайный эпизод и начала влиять на ваше внутреннее состояние";
   var REPORT_KEYS = [
     "introText",
     "annaMeaningText",
@@ -86,7 +87,9 @@
         doNotEmphasizeRepeatingScenario: scores.repeatingScenario <= 2,
         doNotSayLongTime: answers.problemDuration === "less_than_month" ||
           answers.problemDuration === "one_to_three_months" ||
+          answers.problemDuration === "three_to_six_months" ||
           durationLabel === "1-3 месяца",
+        threeToSixDistancePhrase: answers.problemDuration === "three_to_six_months",
         doNotSayEmotionalExhaustion: scores.emotionalTiredness <= 2,
         doNotMakeClaimsAboutPartner: true,
       },
@@ -167,6 +170,26 @@
       return null;
     }
     return output;
+  }
+
+  function replaceThreeToSixLongTime(text) {
+    if (typeof text !== "string" || !/давно/i.test(text)) return text;
+    return text
+      .replace(/[^.!?]*давно[^.!?]*[.!?]?/gi, THREE_TO_SIX_DISTANCE_PHRASE + ".")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function applyThreeToSixRule(report, context) {
+    if (!report || !context || !context.rules || !context.rules.threeToSixDistancePhrase) return report;
+    Object.keys(report).forEach(function (key) {
+      if (typeof report[key] === "string") {
+        report[key] = replaceThreeToSixLongTime(report[key]);
+      } else if (Array.isArray(report[key])) {
+        report[key] = report[key].map(replaceThreeToSixLongTime);
+      }
+    });
+    return report;
   }
 
   function findBlockByLabel(label) {
@@ -271,7 +294,7 @@
     try {
       var cached = window.localStorage.getItem(cacheKey);
       var parsed = cached ? normalizeReport(JSON.parse(cached)) : null;
-      if (parsed) return parsed;
+      if (parsed) return applyThreeToSixRule(parsed, context);
     } catch (_) {}
 
     var response = await fetch("/api/generate-free-report", {
@@ -283,6 +306,7 @@
     var payload = await response.json();
     var report = normalizeReport(payload.report || payload);
     if (!report) throw new Error("AI report JSON is invalid");
+    report = applyThreeToSixRule(report, context);
     try {
       window.localStorage.setItem(cacheKey, JSON.stringify(report));
     } catch (_) {}

@@ -52,6 +52,47 @@ const FALLBACK_TEASER_ITEMS = [
   "Какой следующий шаг поможет вернуть больше ясности",
 ];
 
+const THREE_TO_SIX_DISTANCE_PHRASE = "Тема отдаления уже перестала выглядеть как случайный эпизод и начала влиять на ваше внутреннее состояние";
+
+const PAID_CONTEXT_LABELS = {
+  relationshipStatus: {
+    in_relationship: "В отношениях",
+    together: "В отношениях",
+    on_the_edge: "На грани расставания",
+    after_breakup: "После расставания",
+    unclear: "Сложная неопределённость",
+    no_contact: "Почти нет контакта",
+  },
+  mainProblem: {
+    distance: "Отдаление",
+    conflicts: "Повторяющиеся конфликты",
+    uncertainty: "Неясность",
+    jealousy: "Ревность и недоверие",
+    repeating_pattern: "Повторяющийся сценарий",
+    fear_of_loss: "Страх потерять контакт",
+  },
+  duration: {
+    less_than_month: "Меньше месяца",
+    one_to_three_months: "1–3 месяца",
+    three_to_six_months: "3–6 месяцев",
+    more_than_six_months: "Больше 6 месяцев",
+    years: "Больше года",
+  },
+  goal: {
+    restore_dialogue: "Восстановить диалог",
+    prepare_conversation: "Подготовиться к разговору",
+    understand_partner: "Понять, что происходит",
+    reduce_tension: "Снизить напряжение",
+    make_decision: "Принять решение",
+    return_contact: "Вернуть контакт",
+  },
+};
+
+function labelContextValue(group, key) {
+  const source = PAID_CONTEXT_LABELS[group] || {};
+  return source[key] || clampText(key, 120);
+}
+
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -173,6 +214,85 @@ function normalizeScore(value) {
   return Math.max(1, Math.min(5, Math.round(number)));
 }
 
+function deriveMainScenario(answers, scores) {
+  if (
+    answers.mainProblem === "distance" &&
+    scores.distanceHard >= 4 &&
+    scores.emotionalTiredness >= 4 &&
+    scores.needClarity >= 4
+  ) {
+    return "Тревога + эмоциональные качели + потребность в ясности";
+  }
+
+  const parts = [];
+  if (answers.mainProblem === "distance" || scores.distanceHard >= 4) parts.push("тревога из-за отдаления");
+  if (scores.emotionalTiredness >= 4) parts.push("эмоциональные качели");
+  if (scores.needClarity >= 4) parts.push("потребность в ясности");
+  if (scores.control >= 4) parts.push("попытка вернуть контроль");
+  if (scores.silence >= 4) parts.push("молчание и накопление напряжения");
+  if (scores.repeatingScenario >= 4) parts.push("повторяющийся способ реагировать");
+
+  if (parts.length >= 2) {
+    return parts.slice(0, 3).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" + ");
+  }
+
+  return "Поиск ясности без усиления давления";
+}
+
+function replaceHeavyReportLanguage(text) {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/динамика взаимодействия/gi, "то, что сейчас происходит между вами")
+    .replace(/динамика ваших отношений/gi, "то, что сейчас происходит между вами")
+    .replace(/эмоциональная автономность/gi, "умение не зависеть полностью от реакции партнёра")
+    .replace(/деструктивный паттерн/gi, "повторяющийся способ реагировать, который ухудшает ситуацию")
+    .replace(/сценарная конструкция/gi, "повторяющийся сценарий")
+    .replace(/механизмы компенсации/gi, "способы справиться с напряжением")
+    .replace(/процесс стабилизации контакта/gi, "попытка сделать общение спокойнее")
+    .replace(/стабилизация контакта/gi, "сделать общение спокойнее")
+    .replace(/переработка чувств/gi, "время, чтобы разобраться в своих чувствах")
+    .replace(/трансформация внутреннего состояния/gi, "постепенное изменение вашего состояния")
+    .replace(/структурировать текущую ситуацию/gi, "разложить ситуацию по понятным частям")
+    .replace(/Ваша устойчивость делает вас более привлекательным партнёром/gi, "Ваша устойчивость помогает входить в разговор не из тревоги, а из более взрослой позиции")
+    .replace(/Сократите количество сообщений и звонков до минимума/gi, "Не увеличивайте количество сообщений из тревоги. Оставьте только те контакты, которые действительно помогают прояснению, а не просто снимают напряжение на минуту")
+    .replace(/Партн[её]ру нужно пространство, чтобы почувствовать безопасность/gi, "В такой ситуации партнёр может нуждаться в большем пространстве, и давление может усиливать защитную реакцию")
+    .replace(/Партн[её]ру нужно/gi, "Партнёру может быть важно")
+    .replace(/партн[её]р точно/gi, "партнёр может")
+    .replace(/партн[её]р хочет/gi, "партнёр может хотеть")
+    .replace(/партн[её]р чувствует/gi, "партнёр может чувствовать");
+}
+
+function sanitizePaidReport(value) {
+  if (typeof value === "string") return replaceHeavyReportLanguage(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizePaidReport(item));
+  if (!value || typeof value !== "object") return value;
+  Object.keys(value).forEach((key) => {
+    value[key] = sanitizePaidReport(value[key]);
+  });
+  return value;
+}
+
+function enforcePaidContextRules(report, context) {
+  if (!report || !context) return report;
+  sanitizePaidReport(report);
+
+  if (context.mainScenario && report.alexanderBlock && report.alexanderBlock.cycleExplanation) {
+    const current = report.alexanderBlock.cycleExplanation;
+    if (!current.toLowerCase().includes(context.mainScenario.toLowerCase())) {
+      report.alexanderBlock.cycleExplanation = `Главный сценарий сейчас: ${context.mainScenario}. ${current}`;
+    }
+  }
+
+  if (context.rules && context.rules.threeToSixDistancePhrase) {
+    const intro = report.intro && report.intro.text ? report.intro.text : "";
+    if (/давно/i.test(intro)) {
+      report.intro.text = intro.replace(/[^.!?]*давно[^.!?]*[.!?]?/i, `${THREE_TO_SIX_DISTANCE_PHRASE}.`);
+    }
+  }
+
+  return report;
+}
+
 function readPaymentAccess(value) {
   if (!value || typeof value !== "object") return null;
   const status = typeof value.status === "string" ? value.status : "";
@@ -199,14 +319,20 @@ function buildPaidContext(body) {
     needClarity: normalizeScore(answers.scaleWaiting),
     repeatingScenario: normalizeScore(answers.scaleRepetition),
   };
+  const mainScenario = deriveMainScenario(answers, scores);
+  const isThreeToSixMonths = answers.problemDuration === "three_to_six_months";
 
   return {
     name: clampText(answers.name, 80),
     birthDate: clampText(answers.birthDate, 40),
     relationshipStatus: clampText(answers.relationshipStatus, 80),
+    relationshipStatusLabel: labelContextValue("relationshipStatus", answers.relationshipStatus),
     mainProblem: clampText(answers.mainProblem, 80),
+    mainProblemLabel: labelContextValue("mainProblem", answers.mainProblem),
     problemDuration: clampText(answers.problemDuration, 80),
+    problemDurationLabel: labelContextValue("duration", answers.problemDuration),
     goal: clampText(answers.goal, 80),
+    goalLabel: labelContextValue("goal", answers.goal),
     contextNote: clampText(answers.contextNote, 600),
     lifePathNumber: Number(anna.lifePathNumber) || 0,
     lifePathTitle: clampText(anna.title, 140),
@@ -222,11 +348,14 @@ function buildPaidContext(body) {
     innerFeeling: clampText(alexander.innerFeeling, 500),
     awareness: clampText(alexander.awareness, 500),
     diagnosticBridge: clampText(alexander.diagnosticBridge, 500),
+    mainScenario,
     scores,
     rules: {
       doNotEmphasizeRepeatingScenario: scores.repeatingScenario <= 2,
-      doNotSayLongTime: answers.problemDuration === "less_than_month" || answers.problemDuration === "one_to_three_months",
+      doNotSayLongTime: answers.problemDuration === "less_than_month" || answers.problemDuration === "one_to_three_months" || isThreeToSixMonths,
+      threeToSixDistancePhrase: isThreeToSixMonths,
       doNotSayEmotionalExhaustion: scores.emotionalTiredness <= 2,
+      doNotMakeSilenceCentral: scores.silence <= 2,
       doNotMakeClaimsAboutPartner: true,
     },
   };
@@ -258,6 +387,7 @@ function validateContext(context) {
     rules: {
       doNotEmphasizeRepeatingScenario: Boolean(context.rules && context.rules.doNotEmphasizeRepeatingScenario),
       doNotSayLongTime: Boolean(context.rules && context.rules.doNotSayLongTime),
+      threeToSixDistancePhrase: Boolean(context.rules && context.rules.threeToSixDistancePhrase),
       doNotSayEmotionalExhaustion: Boolean(context.rules && context.rules.doNotSayEmotionalExhaustion),
       doNotMakeClaimsAboutPartner: true,
     },
@@ -274,6 +404,7 @@ function buildSystemPrompt() {
     "Не давай полный пошаговый план в бесплатном отчёте. Дай узнавание, один важный инсайт и мягкий переход к полному разбору.",
     "Если score 4-5, тему можно сделать заметной. Если score 1-2, нельзя делать её главной.",
     "Если duration короткий, не пиши 'давно', 'годами' или 'длительное время'.",
+    `Если duration = 3–6 месяцев, не пиши 'давно'. Для темы отдаления используй смысл: "${THREE_TO_SIX_DISTANCE_PHRASE}".`,
     "Если repeatingScenario низкий, не пиши, что человек постоянно повторяет один сценарий.",
     "Если emotionalTiredness низкий, не пиши, что человек истощён или устал от эмоциональных качелей.",
     "Формат ответа строго:",
@@ -349,7 +480,7 @@ function listOf(input, count, maxLength, fallback) {
   return output.slice(0, count);
 }
 
-function normalizePaidReport(input, fallback) {
+function normalizePaidReport(input, fallback, context) {
   if (!input || typeof input !== "object") return null;
   const safe = fallback || buildPaidFallbackReport({});
   const sevenDayPlan = Array.isArray(input.sevenDayPlan) ? input.sevenDayPlan : [];
@@ -411,6 +542,8 @@ function normalizePaidReport(input, fallback) {
     },
   };
 
+  enforcePaidContextRules(report, context);
+
   if (report.intro.text.length < 20 || report.alexanderBlock.cycleExplanation.length < 20) {
     return null;
   }
@@ -419,14 +552,17 @@ function normalizePaidReport(input, fallback) {
 
 function buildPaidFallbackReport(context) {
   const name = context.name || "вас";
-  const cycle = context.cycleTitle || "текущий сценарий отношений";
+  const cycle = context.mainScenario || context.cycleTitle || "поиск ясности без давления";
   const lifePath = context.lifePathTitle || "ваш личный код";
-  return {
+  const durationNote = context.rules && context.rules.threeToSixDistancePhrase
+    ? `${THREE_TO_SIX_DISTANCE_PHRASE}.`
+    : "Ситуация уже влияет на ваше состояние, поэтому важно действовать спокойнее и точнее.";
+  const report = {
     intro: {
-      text: `Этот разбор собран вокруг вашей текущей ситуации: ${cycle}. В нём важны не общие советы, а то, как именно напряжение запускается, чем поддерживается и какие первые действия помогут вернуть больше ясности без давления на партнёра.`,
+      text: `Этот разбор собран вокруг вашей ситуации: ${cycle}. ${durationNote} Здесь важны не общие советы, а понятная карта того, что усиливает напряжение и какие первые шаги помогут говорить спокойнее.`,
     },
     annaBlock: {
-      lifePathMeaning: `По цифровому анализу сейчас важно смотреть на ${lifePath} не как на ярлык, а как на способ реагировать в близости. В отношениях это проявляется в том, как вы ищете опору, ясность и подтверждение контакта.`,
+      lifePathMeaning: `По цифровому анализу ${lifePath} показывает не ярлык, а привычный способ реагировать в близости. Это видно в том, как вы ищете ясность, тепло и подтверждение контакта.`,
       strongSide: "Ваша сильная сторона — способность замечать нюансы и не оставаться равнодушным к тому, что происходит между вами.",
       weakPoint: "Слабое место появляется там, где желание быстрее понять ситуацию превращается во внутреннее напряжение.",
       typicalMistake: "Типичная ошибка — пытаться получить ясность именно в тот момент, когда разговор уже перегружен эмоциями.",
@@ -434,15 +570,15 @@ function buildPaidFallbackReport(context) {
       recommendation: "Сначала верните спокойный тон и короткий контакт, а уже потом переходите к сложным темам.",
     },
     alexanderBlock: {
-      cycleExplanation: `Сценарий «${cycle}» чаще всего держится на связке тревоги, ожидания и попытки вернуть управляемость. Чем меньше тепла и ясности, тем сильнее хочется ускорить разговор, но именно ускорение может усиливать дистанцию.`,
-      mainMechanism: "Главный механизм здесь — не сама проблема, а способ реагирования на неё. Когда внутри много неопределённости, человек начинает искать быстрый ответ, а партнёр может закрываться ещё сильнее.",
+      cycleExplanation: `Сценарий «${cycle}» держится на тревоге, ожидании и попытке быстрее получить ясность. Чем меньше тепла и понятных сигналов, тем сильнее хочется ускорить разговор. Но именно спешка может усиливать дистанцию.`,
+      mainMechanism: "Главный механизм здесь — не только сама проблема, а способ реагировать на неё. Когда внутри много неопределённости, хочется быстрого ответа. В такой ситуации партнёр может закрываться сильнее, если слышит давление.",
       howUserAmplifiesProblem: [
         "Слишком быстро переходите к серьёзному разговору, когда контакт ещё не восстановлен.",
-        "Пытаетесь получить точный ответ там, где партнёр пока готов только к короткому обмену.",
+        "Пытаетесь получить точный ответ там, где партнёр может быть готов только к короткому обмену.",
         "Накручиваете себя паузами и начинаете говорить из тревоги, а не из спокойной позиции.",
       ],
       innerFeeling: `Внутри у ${name} может быть ощущение, что время уходит и нужно срочно что-то решать. Это чувство понятно, но именно оно часто делает тон тяжелее.`,
-      mainMistake: "Главная ошибка — считать, что сильный разговор сразу вернёт близость. Иногда сначала нужно вернуть безопасность контакта.",
+      mainMistake: "Главная ошибка — считать, что сильный разговор сразу вернёт близость. Иногда сначала нужно сделать общение спокойнее.",
       whatToUnderstand: "Сейчас важно отделить реальную ситуацию от тревожной догадки. Тогда действие становится точнее, а разговор — мягче.",
       recommendation: "Выберите один короткий и спокойный шаг, который не требует от партнёра немедленного решения.",
     },
@@ -461,7 +597,7 @@ function buildPaidFallbackReport(context) {
       whatToStop: [
         "Не начинать разговор с обвинения или проверки.",
         "Не требовать немедленного ответа на сложный вопрос.",
-        "Не писать длинные сообщения из тревоги.",
+        "Не увеличивать количество сообщений из тревоги.",
         "Не додумывать за партнёра его чувства и мотивы.",
       ],
       whatToStart: [
@@ -483,7 +619,7 @@ function buildPaidFallbackReport(context) {
       {
         day: 2,
         title: "Вернуть короткий контакт",
-        whyItMatters: "Близость часто возвращается через простые безопасные касания, а не через тяжёлый анализ отношений.",
+        whyItMatters: "Близость часто возвращается через простые спокойные касания, а не через тяжёлый разговор обо всём сразу.",
         actions: ["Отправьте короткое нейтрально-тёплое сообщение.", "Не добавляйте второй вопрос, если ответа пока нет."],
         phraseOfDay: "Хочу просто пожелать тебе спокойного дня.",
         expectedResult: "Контакт станет менее напряжённым.",
@@ -531,7 +667,7 @@ function buildPaidFallbackReport(context) {
     ],
     finalMemo: {
       mistakes: [
-        "Говорить из тревоги вместо ясной позиции.",
+        "Говорить из тревоги вместо более взрослой позиции.",
         "Требовать от партнёра немедленного ответа.",
         "Путать паузу в контакте с окончательным выводом.",
       ],
@@ -540,10 +676,11 @@ function buildPaidFallbackReport(context) {
         "Формулировать короткие и честные фразы.",
         "Отделять факты от догадок.",
       ],
-      whenToBookDiagnosis: "Если ситуация повторяется, а ваши разговоры снова приходят к одному и тому же напряжению, полезно разобрать живой контекст глубже.",
+      whenToBookDiagnosis: "Если вы хотите разобрать живую ситуацию глубже, можно прийти на диагностику.",
       finalText: "Главная задача на ближайшие дни — не заставить отношения резко измениться, а перестать усиливать тот сценарий, который уже делает контакт тяжелее. Когда меняется тон и последовательность действий, появляется больше пространства для ясности.",
     },
   };
+  return enforcePaidContextRules(report, context);
 }
 
 function buildPaidSystemPrompt() {
@@ -551,13 +688,30 @@ function buildPaidSystemPrompt() {
     "You create a paid personal relationship report in Russian.",
     "Return only valid JSON. Do not return HTML, JSX, Markdown, code fences or explanations.",
     "All string values must be natural Russian Cyrillic text.",
-    "Style: mature, calm, precise, warm, practical. No mysticism. No diagnoses. No fear. No promises to save a relationship.",
-    "Do not claim what the partner definitely thinks or feels. Use cautious wording.",
-    "Avoid filler, repetitions and long paragraphs. The paid report must be deeper and more practical than a free preview.",
+    "Style: professional but simple. Write like a calm specialist explains the situation in a consultation.",
+    "Use simple Russian, short sentences, clear explanations and practical steps.",
+    "Do not write dry academic text. Do not write too emotionally or dramatically.",
+    "No mysticism. No diagnoses. No fear. No promises to save a relationship.",
+    "Never claim that the partner definitely feels, thinks, wants or needs something. Use cautious wording: может, похоже, в такой ситуации может быть.",
+    "Avoid coaching phrases and generic praise. Do not write: Ваша устойчивость делает вас более привлекательным партнёром.",
+    "Recommendations must be non-directive and precise. Do not write: Сократите количество сообщений и звонков до минимума.",
+    "Instead explain: Не увеличивайте количество сообщений из тревоги. Оставьте только те контакты, которые действительно помогают прояснению, а не просто снимают напряжение на минуту.",
+    "Avoid filler, repetitions and long paragraphs. Every paragraph should be no more than 3-4 short lines.",
+    "Prefer sentences up to 18-22 words.",
+    "The paid report must be deeper and more practical than a free preview.",
+    "It must include: scenario map, where the user amplifies tension, how to speak with partner, exact phrases, what to stop, what to start, seven-day plan, final memo.",
     "Do not use these repeated phrases: Сейчас важно увидеть главное; Дополнительно ситуацию усиливает; Вы уже видите два слоя; Полный разбор нужен.",
+    "Do not use heavy terms unless you immediately explain them simply.",
+    "Avoid these phrases: динамика взаимодействия; эмоциональная автономность; деструктивный паттерн; сценарная конструкция; механизмы компенсации; процесс стабилизации контакта; переработка чувств; трансформация внутреннего состояния; структурировать текущую ситуацию.",
+    "Use simple replacements: то, что сейчас происходит между вами; умение не зависеть полностью от реакции партнёра; повторяющийся способ реагировать, который ухудшает ситуацию; сделать общение спокойнее; время, чтобы разобраться в своих чувствах.",
+    "Use 'внутренняя опора' only if you explain it right away as a state where the user depends less on every message or pause.",
     "Respect low scores: if a score is 1-2, do not make that theme central.",
+    "If silence is 1-2, do not make silence, ignoring or avoidance the main scenario.",
     "If emotionalTiredness is low, do not say the user is exhausted.",
     "If repeatingScenario is low, write softly that a scenario may be forming, not that it constantly repeats.",
+    `If duration is 3-6 months and the topic is distance, do not write 'давно'. Use this meaning: "${THREE_TO_SIX_DISTANCE_PHRASE}".`,
+    "The final part may gently say: Если вы хотите разобрать живую ситуацию глубже, можно прийти на диагностику.",
+    "But the report must not feel like a new sales pitch. It must feel complete and valuable on its own.",
     "The seven-day plan must have seven different days, different phrases and different expected results.",
     "JSON shape:",
     '{"intro":{"text":""},"annaBlock":{"lifePathMeaning":"","strongSide":"","weakPoint":"","typicalMistake":"","example":"","recommendation":""},"alexanderBlock":{"cycleExplanation":"","mainMechanism":"","howUserAmplifiesProblem":["","",""],"innerFeeling":"","mainMistake":"","whatToUnderstand":"","recommendation":""},"communicationBlock":{"badDialogueExample":{"userPhrase":"","partnerPhrase":"","userSecondPhrase":"","explanation":""},"betterPhrases":["","",""],"whatToStop":["","","",""],"whatToStart":["","","",""]},"sevenDayPlan":[{"day":1,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":2,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":3,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":4,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":5,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":6,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""},{"day":7,"title":"","whyItMatters":"","actions":["",""],"phraseOfDay":"","expectedResult":""}],"finalMemo":{"mistakes":["","",""],"usefulActions":["","",""],"whenToBookDiagnosis":"","finalText":""}}',
@@ -568,6 +722,13 @@ function buildPaidUserPrompt(context) {
   return [
     "Create the paid report from this structured context. Generate only meaning texts inside the JSON fields.",
     "Do not repeat the free-report wording verbatim. Use the user scores and rules.",
+    "Use context.mainScenario as the main scenario unless it directly contradicts the scores.",
+    "Use the readable labels in the context: relationshipStatusLabel, mainProblemLabel, problemDurationLabel, goalLabel.",
+    "If rules.doNotMakeSilenceCentral is true, do not build the report around silence, ignoring or avoidance.",
+    "If rules.threeToSixDistancePhrase is true, use the provided wording about distance no longer looking like a random episode. Do not say 'давно'.",
+    "Write the communication section with exact phrases the user can say, not abstract advice.",
+    "Write the seven-day plan as practical small steps. Each day should have a concrete action and a phrase.",
+    "Keep the final memo useful. Do not turn it into a sales block.",
     JSON.stringify(context, null, 2),
   ].join("\n\n");
 }
@@ -611,7 +772,7 @@ async function callPaidAi(context) {
     : "";
   const fallback = buildPaidFallbackReport(context);
   const parsed = safeJsonParse(content);
-  const report = normalizePaidReport(parsed, fallback);
+  const report = normalizePaidReport(parsed, fallback, context);
   if (!report) {
     if (DEBUG_AI_REPORT) {
       console.error("[generate-paid-report] invalid AI content:", content.slice(0, 3000));
@@ -648,7 +809,8 @@ async function handleGeneratePaidReport(req, res) {
 
     if (paidReportCache.has(hash)) {
       const cached = paidReportCache.get(hash);
-      sendJson(res, 200, { report: cached.report, source: "paid_cache", hash, createdAt: cached.createdAt, model: cached.model });
+      const report = enforcePaidContextRules(cached.report, context);
+      sendJson(res, 200, { report, source: "paid_cache", hash, createdAt: cached.createdAt, model: cached.model });
       return;
     }
 
