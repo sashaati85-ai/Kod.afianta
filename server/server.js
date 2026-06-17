@@ -287,7 +287,13 @@ function enforcePaidContextRules(report, context) {
     const intro = report.intro && report.intro.text ? report.intro.text : "";
     if (/давно/i.test(intro)) {
       report.intro.text = intro.replace(/[^.!?]*давно[^.!?]*[.!?]?/i, `${THREE_TO_SIX_DISTANCE_PHRASE}.`);
+    } else if (intro && !intro.includes(THREE_TO_SIX_DISTANCE_PHRASE)) {
+      report.intro.text = `${THREE_TO_SIX_DISTANCE_PHRASE}. ${intro}`;
     }
+  }
+
+  if (report.finalMemo) {
+    report.finalMemo.whenToBookDiagnosis = "Если вы хотите разобрать живую ситуацию глубже, можно прийти на диагностику.";
   }
 
   return report;
