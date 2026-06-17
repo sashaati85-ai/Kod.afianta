@@ -408,7 +408,7 @@ function contextScore(context, key) {
 
 function freeReportRequestPhrase(context) {
   const request = (context.mainRequest || "").toLowerCase();
-  if (request.includes("отдал") || request.includes("холод")) return "отдаления и холода";
+  if (request.includes("отдал") || request.includes("холод")) return "отдаления и потери тепла";
   if (request.includes("конфликт")) return "повторяющихся конфликтов";
   if (request.includes("неяс") || request.includes("подвеш")) return "неясности и подвешенности";
   if (request.includes("ревн") || request.includes("недовер")) return "ревности и недоверия";
@@ -417,25 +417,47 @@ function freeReportRequestPhrase(context) {
   return "вашей ситуации";
 }
 
-function buildPersonalizedFreeReport(context) {
-  const themes = [
-    { key: "needClarity", text: "вам особенно важно понять, что между вами происходит на самом деле" },
-    { key: "distanceHard", text: "сильнее всего вас задевает дистанция, холод или снижение внимания" },
-    { key: "emotionalTiredness", text: "накопилось внутреннее напряжение, и сил на неопределённость становится меньше" },
-    { key: "control", text: "в тревоге может появляться желание быстрее всё прояснить или вернуть контроль" },
-    { key: "repeatingScenario", text: "вы уже замечаете знакомый повтор, который важно рассмотреть глубже" },
-    { key: "silence", text: "молчание и паузы могут усиливать ощущение неопределённости" },
-  ].sort((a, b) => contextScore(context, b.key) - contextScore(context, a.key));
+function freeReportCycleTitle(context) {
+  if (contextScore(context, "needClarity") >= 4 && contextScore(context, "distanceHard") >= 4) {
+    return "ТРЕВОГА + ПОТРЕБНОСТЬ В ЯСНОСТИ";
+  }
+  if (contextScore(context, "needClarity") >= 4) return "ЦИКЛ ТРЕВОГИ И ПОТРЕБНОСТИ В ЯСНОСТИ";
+  if (contextScore(context, "distanceHard") >= 4) return "ЦИКЛ ТРЕВОГИ НА ФОНЕ ДИСТАНЦИИ";
+  if (contextScore(context, "control") >= 4) return "ЦИКЛ ТРЕВОГИ И ПОПЫТКИ ВЕРНУТЬ КОНТРОЛЬ";
+  return context.detectedCycle || "ТЕКУЩИЙ МЕХАНИЗМ НАПРЯЖЕНИЯ";
+}
 
+function freeReportControlNote(context) {
+  if (contextScore(context, "control") < 4) return "";
+  return " На этом фоне может появляться желание быстрее вернуть управляемость, но именно срочность иногда делает разговор похожим на давление.";
+}
+
+function freeReportThemes(context) {
+  const themes = [
+    { key: "needClarity", text: "хочется быстрее понять перспективу отношений, но срочность может сделать разговор тяжелее" },
+    { key: "distanceHard", text: "дистанция воспринимается особенно болезненно, потому что теряется ощущение контакта" },
+    { key: "control", text: "в неопределённости появляется желание вернуть управляемость, но это может восприниматься как давление" },
+    { key: "emotionalTiredness", text: "накопилось внутреннее напряжение, и сил на неопределённость становится меньше" },
+    { key: "repeatingScenario", text: "какая-то реакция сейчас может постепенно стать привычной, если её не заметить вовремя" },
+    { key: "silence", text: "паузы в контакте могут оставлять слишком много пространства для догадок" },
+  ].filter((theme) => contextScore(context, theme.key) >= 3);
+  if (!themes.length) {
+    themes.push({ key: "needClarity", text: "важно спокойнее понять, что между вами происходит на самом деле" });
+  }
+  return themes.sort((a, b) => contextScore(context, b.key) - contextScore(context, a.key));
+}
+
+function buildPersonalizedFreeReport(context) {
+  const themes = freeReportThemes(context);
   const primary = themes[0];
-  const secondary = themes.find((theme) => theme.key !== primary.key) || themes[1];
+  const secondary = themes.find((theme) => theme.key !== primary.key) || { key: "distanceHard", text: "важно не усиливать напряжение резкими действиями" };
   const request = freeReportRequestPhrase(context);
   const name = context.name ? `${context.name}, ` : "";
-  const cycle = context.detectedCycle || "текущий сценарий";
+  const cycle = freeReportCycleTitle(context);
   const life = context.lifePathArchetype || "ваш личный код";
   const lifeMeaning = context.lifePathMeaning || "важны ясность, бережность и понимание своего сценария";
   const durationNote = context.rules && context.rules.threeToSixDistancePhrase
-    ? `${THREE_TO_SIX_DISTANCE_PHRASE}.`
+    ? `Тема ${request} уже перестала выглядеть для вас случайным эпизодом и начала заметно влиять на внутреннее состояние.`
     : "По вашим ответам видно, что ситуация уже влияет не только на отношения, но и на ваше внутреннее состояние.";
   const status = (context.currentSituation || "").toLowerCase();
   const statusText = status.includes("грани")
@@ -448,10 +470,10 @@ function buildPersonalizedFreeReport(context) {
 
   return normalizeAiReport({
     introText: `${name}по вашим ответам видно, что главная тема сейчас не просто в факте ${request}. Важнее то, как эта ситуация действует на вас изнутри: ${primary.text}. ${durationNote}`,
-    annaMeaningText: `В блоке Анны проявился код «${life}». Для вас в отношениях особенно значимо: ${lifeMeaning}. Поэтому текущая ситуация может задевать не только чувства к партнёру, но и ощущение собственной устойчивости.`,
+    annaMeaningText: `По цифровой части разбора проявился код «${life}». Для вас в отношениях особенно значимо: ${lifeMeaning}. Поэтому текущая ситуация может задевать не только чувства к партнёру, но и ощущение собственной устойчивости.`,
     annaRecommendation: "Сейчас полезно отделять реальный контакт от внутренних догадок. Сначала возвращайте себе спокойствие, а уже потом выбирайте слова и действия.",
-    alexanderIntroText: `Со стороны Александра эта ситуация читается как сценарий: «${cycle}». Он особенно часто включается ${statusText}.`,
-    alexanderScenarioText: `Если коротко, внутри сценария есть два слоя. Первый: ${primary.text}. Второй: ${secondary.text}. Из-за этого разговор может становиться тяжелее ещё до того, как вы успеваете спокойно сказать главное.`,
+    alexanderIntroText: `Со стороны Александра эта ситуация читается как цикл: «${cycle}». Он может включаться, ${statusText}.`,
+    alexanderScenarioText: `Если коротко, внутри этого механизма есть два слоя. Первый: ${primary.text}. Второй: ${secondary.text}.${freeReportControlNote(context)} Из-за этого разговор может становиться тяжелее ещё до того, как вы успеваете спокойно сказать главное.`,
     alexanderRiskText: contextScore(context, "control") >= 4
       ? "пытаться получить ясность из тревоги. Тогда даже правильные слова могут звучать как давление, и партнёр может защищаться сильнее."
       : "слишком долго оставаться внутри ожидания и догадок. Тогда напряжение копится, а следующий разговор становится тяжелее, чем мог бы быть.",
@@ -459,9 +481,9 @@ function buildPersonalizedFreeReport(context) {
       ? "Внутри это может ощущаться как усталость от неопределённости: хочется уже не красивых объяснений, а спокойного и честного понимания, что делать дальше."
       : "Внутри это может ощущаться как постоянное считывание сигналов: есть ли тепло, есть ли ответ, есть ли шанс на нормальный разговор.",
     alexanderRecommendation: "Не превращайте каждую тревогу в срочное действие. Сначала сформулируйте, что именно вы хотите прояснить, и только потом выходите в контакт.",
-    nextStepText: "Этот бесплатный результат показывает верхний слой вашей ситуации. В полном разборе можно увидеть карту сценария, точные фразы для разговора и план действий на ближайшие 7 дней.",
+    nextStepText: "Этот бесплатный результат показывает верхний слой вашей ситуации. Такой цикл легче остановить, когда видно, в какой момент тревога превращается в давление. В полном разборе можно точнее увидеть, какие фразы помогут говорить спокойнее и как двигаться к вашей цели.",
     paidReportTeaserItems: [
-      "Карта вашего сценария без общих советов",
+      "Карта того, что сейчас происходит между вами",
       "Где вы непреднамеренно усиливаете напряжение",
       "Какие слова помогут говорить спокойнее",
       "Что лучше прекратить уже сейчас",
@@ -940,13 +962,13 @@ async function handleGenerateFreeReport(req, res) {
       });
 
     if (reportCache.has(hash)) {
-      sendJson(res, 200, { report: reportCache.get(hash), cached: true, source: "free_local" });
+      sendJson(res, 200, { report: reportCache.get(hash), cached: true, source: "free_template" });
       return;
     }
 
     const report = buildPersonalizedFreeReport(context);
     reportCache.set(hash, report);
-    sendJson(res, 200, { report, cached: false, source: "free_local" });
+    sendJson(res, 200, { report, cached: false, source: "free_template" });
   } catch (error) {
     console.error("[generate-free-report]", error);
     sendJson(res, 503, { error: "Free report is temporarily unavailable", fallback: true });

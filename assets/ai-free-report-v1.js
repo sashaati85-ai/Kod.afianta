@@ -2,7 +2,7 @@
   "use strict";
 
   var FLOW_KEY = "relationship-code-flow-state";
-  var CACHE_PREFIX = "kod-free-report-local-v2:";
+  var CACHE_PREFIX = "kod-free-report-template-v3:";
   var THREE_TO_SIX_DISTANCE_PHRASE = "Тема отдаления уже перестала выглядеть как случайный эпизод и начала влиять на ваше внутреннее состояние";
   var REPORT_KEYS = [
     "introText",
@@ -197,40 +197,43 @@
   }
 
   function strongestTheme(context) {
-    var themes = [
-      { key: "needClarity", label: "потребность в ясности", text: "вам особенно важно понять, что между вами происходит на самом деле" },
-      { key: "distanceHard", label: "острая реакция на отдаление", text: "сильнее всего вас задевает дистанция, холод или снижение внимания" },
-      { key: "emotionalTiredness", label: "эмоциональная усталость", text: "накопилось много внутреннего напряжения, и сил на неопределённость становится меньше" },
-      { key: "control", label: "попытка удержать ситуацию", text: "в тревоге может появляться желание быстрее всё прояснить или вернуть контроль" },
-      { key: "repeatingScenario", label: "повторяющийся сценарий", text: "вы уже замечаете знакомый повтор, который важно рассмотреть глубже" },
-      { key: "silence", label: "паузы и замалчивание", text: "молчание и паузы могут усиливать ощущение неопределённости" },
-    ];
+    var themes = relevantThemes(context);
     themes.sort(function (a, b) {
       return score(context, b.key) - score(context, a.key);
     });
     return themes[0];
   }
 
-  function secondaryTheme(context, primaryKey) {
+  function relevantThemes(context) {
     var themes = [
-      { key: "needClarity", text: "потребность в ясности делает ожидание особенно чувствительным" },
-      { key: "distanceHard", text: "отдаление воспринимается не как мелочь, а как важный сигнал" },
-      { key: "emotionalTiredness", text: "усталость уже влияет на тон разговора и внутреннее состояние" },
-      { key: "control", text: "попытка ускорить ответ может непреднамеренно повышать напряжение" },
-      { key: "repeatingScenario", text: "есть ощущение знакомого круга, который не хочется повторить снова" },
-      { key: "silence", text: "паузы в контакте могут оставлять слишком много пространства для догадок" },
+      { key: "needClarity", label: "потребность в ясности", text: "хочется быстрее понять перспективу отношений, но срочность может сделать разговор тяжелее" },
+      { key: "distanceHard", label: "острая реакция на дистанцию", text: "дистанция воспринимается особенно болезненно, потому что теряется ощущение контакта" },
+      { key: "control", label: "попытка вернуть управляемость", text: "в неопределённости появляется желание вернуть управляемость, но это может восприниматься как давление" },
+      { key: "emotionalTiredness", label: "эмоциональная усталость", text: "накопилось внутреннее напряжение, и сил на неопределённость становится меньше" },
+      { key: "repeatingScenario", label: "закрепляющаяся реакция", text: "какая-то реакция сейчас может постепенно стать привычной, если её не заметить вовремя" },
+      { key: "silence", label: "паузы в контакте", text: "паузы в контакте могут оставлять слишком много пространства для догадок" },
     ].filter(function (theme) {
+      return score(context, theme.key) >= 3;
+    });
+    if (!themes.length) {
+      themes.push({ key: "needClarity", label: "потребность в ясности", text: "важно спокойнее понять, что между вами происходит на самом деле" });
+    }
+    return themes;
+  }
+
+  function secondaryTheme(context, primaryKey) {
+    var themes = relevantThemes(context).filter(function (theme) {
       return theme.key !== primaryKey;
     });
     themes.sort(function (a, b) {
       return score(context, b.key) - score(context, a.key);
     });
-    return themes[0];
+    return themes[0] || { key: "distanceHard", text: "важно не усиливать напряжение резкими действиями" };
   }
 
-  function durationInsight(context) {
+  function durationInsight(context, request) {
     if (context && context.rules && context.rules.threeToSixDistancePhrase) {
-      return THREE_TO_SIX_DISTANCE_PHRASE + ".";
+      return "Тема " + request + " уже перестала выглядеть для вас случайным эпизодом и начала заметно влиять на внутреннее состояние.";
     }
     var duration = String((context && context.duration) || "").toLowerCase();
     if (duration.indexOf("меньше") !== -1 || duration.indexOf("less") !== -1) {
@@ -266,7 +269,7 @@
 
   function requestPhrase(context) {
     var request = String((context && context.mainRequest) || "").toLowerCase();
-    if (request.indexOf("отдал") !== -1 || request.indexOf("холод") !== -1) return "отдаления и холода";
+    if (request.indexOf("отдал") !== -1 || request.indexOf("холод") !== -1) return "отдаления и потери тепла";
     if (request.indexOf("конфликт") !== -1) return "повторяющихся конфликтов";
     if (request.indexOf("неяс") !== -1 || request.indexOf("подвеш") !== -1) return "неясности и подвешенности";
     if (request.indexOf("ревн") !== -1 || request.indexOf("недовер") !== -1) return "ревности и недоверия";
@@ -275,26 +278,41 @@
     return String((context && context.mainRequest) || "вашей ситуации").toLowerCase();
   }
 
+  function cycleTitle(context) {
+    if (score(context, "needClarity") >= 4 && score(context, "distanceHard") >= 4) {
+      return "ТРЕВОГА + ПОТРЕБНОСТЬ В ЯСНОСТИ";
+    }
+    if (score(context, "needClarity") >= 4) return "ЦИКЛ ТРЕВОГИ И ПОТРЕБНОСТИ В ЯСНОСТИ";
+    if (score(context, "distanceHard") >= 4) return "ЦИКЛ ТРЕВОГИ НА ФОНЕ ДИСТАНЦИИ";
+    if (score(context, "control") >= 4) return "ЦИКЛ ТРЕВОГИ И ПОПЫТКИ ВЕРНУТЬ КОНТРОЛЬ";
+    return context.detectedCycle || "ТЕКУЩИЙ МЕХАНИЗМ НАПРЯЖЕНИЯ";
+  }
+
+  function controlNote(context) {
+    if (score(context, "control") < 4) return "";
+    return " На этом фоне может появляться желание быстрее вернуть управляемость, но именно срочность иногда делает разговор похожим на давление.";
+  }
+
   function buildPersonalReport(context) {
     var name = context && context.name ? context.name + ", " : "";
     var primary = strongestTheme(context);
     var secondary = secondaryTheme(context, primary.key);
-    var cycle = context.detectedCycle || "текущий сценарий";
+    var cycle = cycleTitle(context);
     var life = context.lifePathArchetype || "ваш личный код";
     var lifeMeaning = context.lifePathMeaning || "важны ясность, бережность и понимание своего сценария";
     var request = requestPhrase(context);
     var goal = goalPhrase(context);
-    var duration = durationInsight(context);
+    var duration = durationInsight(context, request);
 
     var introText = name + "по вашим ответам видно, что главная тема сейчас не просто в факте " + request + ". Важнее то, как эта ситуация действует на вас изнутри: " + primary.text + ". " + duration;
 
-    var annaMeaningText = "В блоке Анны проявился код «" + life + "». Для вас в отношениях особенно значимо: " + lifeMeaning + ". Поэтому текущая ситуация может задевать не только чувства к партнёру, но и ощущение собственной устойчивости.";
+    var annaMeaningText = "По цифровой части разбора проявился код «" + life + "». Для вас в отношениях особенно значимо: " + lifeMeaning + ". Поэтому текущая ситуация может задевать не только чувства к партнёру, но и ощущение собственной устойчивости.";
 
     var annaRecommendation = "Сейчас полезно отделять реальный контакт от внутренних догадок. Сначала возвращайте себе спокойствие, а уже потом выбирайте слова и действия.";
 
-    var alexanderIntroText = "Со стороны Александра эта ситуация читается как сценарий: «" + cycle + "». Он особенно часто включается " + statusPhrase(context) + ".";
+    var alexanderIntroText = "Со стороны Александра эта ситуация читается как цикл: «" + cycle + "». Он может включаться, " + statusPhrase(context) + ".";
 
-    var alexanderScenarioText = "Если коротко, внутри сценария есть два слоя. Первый: " + primary.text + ". Второй: " + secondary.text + ". Из-за этого разговор может становиться тяжелее ещё до того, как вы успеваете спокойно сказать главное.";
+    var alexanderScenarioText = "Если коротко, внутри этого механизма есть два слоя. Первый: " + primary.text + ". Второй: " + secondary.text + "." + controlNote(context) + " Из-за этого разговор может становиться тяжелее ещё до того, как вы успеваете спокойно сказать главное.";
 
     var alexanderRiskText = score(context, "control") >= 4
       ? "пытаться получить ясность из тревоги. Тогда даже правильные слова могут звучать как давление, и партнёр может защищаться сильнее."
@@ -306,7 +324,7 @@
 
     var alexanderRecommendation = "Не превращайте каждую тревогу в срочное действие. Сначала сформулируйте, что именно вы хотите прояснить, и только потом выходите в контакт.";
 
-    var nextStepText = "Этот бесплатный результат показывает верхний слой вашей ситуации. Следующий шаг — разобрать, где именно вы сами усиливаете напряжение, какие фразы помогут говорить спокойнее и как двигаться к цели: " + goal + ".";
+    var nextStepText = "Этот бесплатный результат показывает верхний слой вашей ситуации. Такой цикл легче остановить, когда видно, в какой момент тревога превращается в давление. В полном разборе можно точнее увидеть, какие фразы помогут говорить спокойнее и как двигаться к цели: " + goal + ".";
 
     return applyThreeToSixRule({
       introText: introText,
@@ -319,7 +337,7 @@
       alexanderRecommendation: alexanderRecommendation,
       nextStepText: nextStepText,
       paidReportTeaserItems: [
-        "Карта вашего сценария без общих советов",
+        "Карта того, что сейчас происходит между вами",
         "Где вы непреднамеренно усиливаете напряжение",
         "Какие слова помогут говорить спокойнее",
         "Что лучше прекратить уже сейчас",
