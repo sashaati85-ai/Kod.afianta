@@ -2,7 +2,7 @@
   "use strict";
 
   var FLOW_KEY = "relationship-code-flow-state";
-  var CACHE_PREFIX = "kod-free-report-ai:";
+  var CACHE_PREFIX = "kod-free-report-local-v2:";
   var THREE_TO_SIX_DISTANCE_PHRASE = "Тема отдаления уже перестала выглядеть как случайный эпизод и начала влиять на ваше внутреннее состояние";
   var REPORT_KEYS = [
     "introText",
@@ -192,6 +192,142 @@
     return report;
   }
 
+  function score(context, key) {
+    return context && context.scores ? normalizeScore(context.scores[key]) : 3;
+  }
+
+  function strongestTheme(context) {
+    var themes = [
+      { key: "needClarity", label: "потребность в ясности", text: "вам особенно важно понять, что между вами происходит на самом деле" },
+      { key: "distanceHard", label: "острая реакция на отдаление", text: "сильнее всего вас задевает дистанция, холод или снижение внимания" },
+      { key: "emotionalTiredness", label: "эмоциональная усталость", text: "накопилось много внутреннего напряжения, и сил на неопределённость становится меньше" },
+      { key: "control", label: "попытка удержать ситуацию", text: "в тревоге может появляться желание быстрее всё прояснить или вернуть контроль" },
+      { key: "repeatingScenario", label: "повторяющийся сценарий", text: "вы уже замечаете знакомый повтор, который важно рассмотреть глубже" },
+      { key: "silence", label: "паузы и замалчивание", text: "молчание и паузы могут усиливать ощущение неопределённости" },
+    ];
+    themes.sort(function (a, b) {
+      return score(context, b.key) - score(context, a.key);
+    });
+    return themes[0];
+  }
+
+  function secondaryTheme(context, primaryKey) {
+    var themes = [
+      { key: "needClarity", text: "потребность в ясности делает ожидание особенно чувствительным" },
+      { key: "distanceHard", text: "отдаление воспринимается не как мелочь, а как важный сигнал" },
+      { key: "emotionalTiredness", text: "усталость уже влияет на тон разговора и внутреннее состояние" },
+      { key: "control", text: "попытка ускорить ответ может непреднамеренно повышать напряжение" },
+      { key: "repeatingScenario", text: "есть ощущение знакомого круга, который не хочется повторить снова" },
+      { key: "silence", text: "паузы в контакте могут оставлять слишком много пространства для догадок" },
+    ].filter(function (theme) {
+      return theme.key !== primaryKey;
+    });
+    themes.sort(function (a, b) {
+      return score(context, b.key) - score(context, a.key);
+    });
+    return themes[0];
+  }
+
+  function durationInsight(context) {
+    if (context && context.rules && context.rules.threeToSixDistancePhrase) {
+      return THREE_TO_SIX_DISTANCE_PHRASE + ".";
+    }
+    var duration = String((context && context.duration) || "").toLowerCase();
+    if (duration.indexOf("меньше") !== -1 || duration.indexOf("less") !== -1) {
+      return "Ситуация ещё не успела полностью закрепиться, поэтому сейчас особенно важно не усиливать её резкими действиями.";
+    }
+    if (duration.indexOf("1-3") !== -1 || duration.indexOf("тр") !== -1) {
+      return "Напряжение уже начало повторяться, но его ещё можно разбирать без ощущения, что всё окончательно зашло в тупик.";
+    }
+    if (duration.indexOf("6") !== -1 || duration.indexOf("год") !== -1 || duration.indexOf("давно") !== -1) {
+      return "Ситуация стала частью вашего эмоционального фона, поэтому важны не быстрые рывки, а более точное понимание сценария.";
+    }
+    return "По вашим ответам видно, что ситуация уже влияет не только на отношения, но и на ваше внутреннее состояние.";
+  }
+
+  function statusPhrase(context) {
+    var status = String((context && context.currentSituation) || "").toLowerCase();
+    if (status.indexOf("грани") !== -1) return "когда отношения ощущаются на грани";
+    if (status.indexOf("расстав") !== -1 || status.indexOf("после") !== -1) return "когда формальный статус уже изменился, но внутренняя связь ещё не отпустила";
+    if (status.indexOf("нет контакт") !== -1 || status.indexOf("контакта") !== -1) return "когда контакта мало и особенно трудно отделить факты от тревожных догадок";
+    if (status.indexOf("неопредел") !== -1) return "когда статус связи остаётся неясным";
+    return "когда связь ещё есть, но внутри неё стало больше напряжения";
+  }
+
+  function goalPhrase(context) {
+    var goal = String((context && context.mainGoal) || "").toLowerCase();
+    if (goal.indexOf("диалог") !== -1) return "вернуться к разговору без давления";
+    if (goal.indexOf("понять") !== -1) return "лучше понять, что происходит между вами";
+    if (goal.indexOf("напряж") !== -1) return "снизить напряжение и не ухудшать контакт";
+    if (goal.indexOf("решен") !== -1 || goal.indexOf("решение") !== -1) return "принять решение из более спокойного состояния";
+    if (goal.indexOf("контакт") !== -1) return "вернуть контакт бережно, без попытки дожать ситуацию";
+    return "подойти к следующему шагу спокойнее и точнее";
+  }
+
+  function requestPhrase(context) {
+    var request = String((context && context.mainRequest) || "").toLowerCase();
+    if (request.indexOf("отдал") !== -1 || request.indexOf("холод") !== -1) return "отдаления и холода";
+    if (request.indexOf("конфликт") !== -1) return "повторяющихся конфликтов";
+    if (request.indexOf("неяс") !== -1 || request.indexOf("подвеш") !== -1) return "неясности и подвешенности";
+    if (request.indexOf("ревн") !== -1 || request.indexOf("недовер") !== -1) return "ревности и недоверия";
+    if (request.indexOf("повтор") !== -1 || request.indexOf("сценар") !== -1) return "повторяющегося сценария";
+    if (request.indexOf("потер") !== -1) return "страха потерять контакт";
+    return String((context && context.mainRequest) || "вашей ситуации").toLowerCase();
+  }
+
+  function buildPersonalReport(context) {
+    var name = context && context.name ? context.name + ", " : "";
+    var primary = strongestTheme(context);
+    var secondary = secondaryTheme(context, primary.key);
+    var cycle = context.detectedCycle || "текущий сценарий";
+    var life = context.lifePathArchetype || "ваш личный код";
+    var lifeMeaning = context.lifePathMeaning || "важны ясность, бережность и понимание своего сценария";
+    var request = requestPhrase(context);
+    var goal = goalPhrase(context);
+    var duration = durationInsight(context);
+
+    var introText = name + "по вашим ответам видно, что главная тема сейчас не просто в факте " + request + ". Важнее то, как эта ситуация действует на вас изнутри: " + primary.text + ". " + duration;
+
+    var annaMeaningText = "В блоке Анны проявился код «" + life + "». Для вас в отношениях особенно значимо: " + lifeMeaning + ". Поэтому текущая ситуация может задевать не только чувства к партнёру, но и ощущение собственной устойчивости.";
+
+    var annaRecommendation = "Сейчас полезно отделять реальный контакт от внутренних догадок. Сначала возвращайте себе спокойствие, а уже потом выбирайте слова и действия.";
+
+    var alexanderIntroText = "Со стороны Александра эта ситуация читается как сценарий: «" + cycle + "». Он особенно часто включается " + statusPhrase(context) + ".";
+
+    var alexanderScenarioText = "Если коротко, внутри сценария есть два слоя. Первый: " + primary.text + ". Второй: " + secondary.text + ". Из-за этого разговор может становиться тяжелее ещё до того, как вы успеваете спокойно сказать главное.";
+
+    var alexanderRiskText = score(context, "control") >= 4
+      ? "пытаться получить ясность из тревоги. Тогда даже правильные слова могут звучать как давление, и партнёр может защищаться сильнее."
+      : "слишком долго оставаться внутри ожидания и догадок. Тогда напряжение копится, а следующий разговор становится тяжелее, чем мог бы быть.";
+
+    var alexanderInnerFeelingText = score(context, "emotionalTiredness") >= 4
+      ? "Внутри это может ощущаться как усталость от неопределённости: хочется уже не красивых объяснений, а спокойного и честного понимания, что делать дальше."
+      : "Внутри это может ощущаться как постоянное считывание сигналов: есть ли тепло, есть ли ответ, есть ли шанс на нормальный разговор.";
+
+    var alexanderRecommendation = "Не превращайте каждую тревогу в срочное действие. Сначала сформулируйте, что именно вы хотите прояснить, и только потом выходите в контакт.";
+
+    var nextStepText = "Этот бесплатный результат показывает верхний слой вашей ситуации. Следующий шаг — разобрать, где именно вы сами усиливаете напряжение, какие фразы помогут говорить спокойнее и как двигаться к цели: " + goal + ".";
+
+    return applyThreeToSixRule({
+      introText: introText,
+      annaMeaningText: annaMeaningText,
+      annaRecommendation: annaRecommendation,
+      alexanderIntroText: alexanderIntroText,
+      alexanderScenarioText: alexanderScenarioText,
+      alexanderRiskText: alexanderRiskText,
+      alexanderInnerFeelingText: alexanderInnerFeelingText,
+      alexanderRecommendation: alexanderRecommendation,
+      nextStepText: nextStepText,
+      paidReportTeaserItems: [
+        "Карта вашего сценария без общих советов",
+        "Где вы непреднамеренно усиливаете напряжение",
+        "Какие слова помогут говорить спокойнее",
+        "Что лучше прекратить уже сейчас",
+        "План действий на ближайшие 7 дней",
+      ],
+    }, context);
+  }
+
   function findBlockByLabel(label) {
     var labels = Array.from(document.querySelectorAll(".result-section-label"));
     for (var i = 0; i < labels.length; i += 1) {
@@ -297,16 +433,8 @@
       if (parsed) return applyThreeToSixRule(parsed, context);
     } catch (_) {}
 
-    var response = await fetch("/api/generate-free-report", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hash: hash, context: context }),
-    });
-    if (!response.ok) throw new Error("AI report request failed");
-    var payload = await response.json();
-    var report = normalizeReport(payload.report || payload);
+    var report = normalizeReport(buildPersonalReport(context));
     if (!report) throw new Error("AI report JSON is invalid");
-    report = applyThreeToSixRule(report, context);
     try {
       window.localStorage.setItem(cacheKey, JSON.stringify(report));
     } catch (_) {}
