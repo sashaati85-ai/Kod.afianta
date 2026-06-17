@@ -7,7 +7,7 @@ const PORT = Number(process.env.PORT || 3000);
 const SITE_DIR = process.env.SITE_DIR || path.join(__dirname, "site");
 const AI_API_KEY = process.env.AI_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
-const PAID_AI_MODEL = process.env.PAID_AI_MODEL || process.env.AI_MODEL || "google/gemini-3-flash-preview";
+const PAID_AI_MODEL = process.env.PAID_AI_MODEL || process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
 const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1").replace(/\/$/, "");
 const PAID_REPORT_STORE = process.env.PAID_REPORT_STORE || path.join(__dirname, "paid-reports.json");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
@@ -809,9 +809,10 @@ async function handleGeneratePaidReport(req, res) {
       return;
     }
 
-    const hash = typeof body.hash === "string" && body.hash.length >= 12
+    const clientHash = typeof body.hash === "string" && body.hash.length >= 12
       ? body.hash
       : stableHash({ context, paymentId: paymentAccess.paymentId, orderId: paymentAccess.orderId });
+    const hash = stableHash({ clientHash, paidModel: PAID_AI_MODEL, reportVersion: "paid-ai-v3" });
 
     if (paidReportCache.has(hash)) {
       const cached = paidReportCache.get(hash);

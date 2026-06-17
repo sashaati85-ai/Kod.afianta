@@ -3,7 +3,7 @@
 
   var FLOW_KEY = "relationship-code-flow-state";
   var PAYMENT_KEY = "relationship-code-payment-access";
-  var CACHE_PREFIX = "kod-paid-report-ai-v2:";
+  var CACHE_PREFIX = "kod-paid-report-ai-v3:";
 
   function readJsonStorage(storage, key) {
     try {
