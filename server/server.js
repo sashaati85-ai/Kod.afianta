@@ -704,6 +704,7 @@ function buildPaidSystemPrompt() {
     "Instead explain: Не увеличивайте количество сообщений из тревоги. Оставьте только те контакты, которые действительно помогают прояснению, а не просто снимают напряжение на минуту.",
     "Avoid filler, repetitions and long paragraphs. Every paragraph should be no more than 3-4 short lines.",
     "Prefer sentences up to 18-22 words.",
+    "Keep each field compact enough to fit the full JSON response. Do not over-expand explanations.",
     "The paid report must be deeper and more practical than a free preview.",
     "It must include: scenario map, where the user amplifies tension, how to speak with partner, exact phrases, what to stop, what to start, seven-day plan, final memo.",
     "Do not use these repeated phrases: Сейчас важно увидеть главное; Дополнительно ситуацию усиливает; Вы уже видите два слоя; Полный разбор нужен.",
@@ -755,7 +756,7 @@ async function callPaidAi(context) {
         { role: "user", content: buildPaidUserPrompt(context) },
       ],
       temperature: 0.35,
-      max_tokens: 4200,
+      max_tokens: 7000,
       response_format: { type: "json_object" },
     }),
   });
