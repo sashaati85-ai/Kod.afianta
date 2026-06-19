@@ -57,6 +57,28 @@
     if (state && state.answers) write(localStorage, FLOW_BACKUP_KEY, state);
   }
 
+  function restorePaymentStatus() {
+    var payment = read(localStorage, PAYMENT_KEY);
+    if (!payment || !payment.orderId || !payment.paymentId || payment.status === "paid") return;
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open(
+        "GET",
+        "/api/payment-status?paymentId=" + encodeURIComponent(payment.paymentId) +
+          "&orderId=" + encodeURIComponent(payment.orderId),
+        false
+      );
+      xhr.send(null);
+      if (xhr.status !== 200) return;
+      var status = JSON.parse(xhr.responseText);
+      if (status.paid) {
+        payment.status = "paid";
+        payment.paidAt = payment.paidAt || new Date().toISOString();
+        write(localStorage, PAYMENT_KEY, payment);
+      }
+    } catch (_) {}
+  }
+
   async function recoverPaidAccess() {
     var state = read(sessionStorage, FLOW_KEY) || read(localStorage, FLOW_BACKUP_KEY);
     var payment = read(localStorage, PAYMENT_KEY);
@@ -89,6 +111,7 @@
 
   restoreLocalBackup();
   restoreFromReturnToken();
+  restorePaymentStatus();
   mirrorFlow();
   window.setInterval(function () {
     mirrorFlow();

@@ -139,9 +139,52 @@
     }, 4000);
   }
 
+  function renderRecoveryNotice() {
+    var path = window.location.pathname.replace(/\/$/, "");
+    if (path !== "/questionnaire" && path !== "/result") return;
+    var payment = readPayment();
+    if (!payment || payment.status !== "paid" || document.querySelector(".paid-recovery-notice")) return;
+
+    var notice = document.createElement("section");
+    notice.className = "paid-recovery-notice";
+    if (path === "/questionnaire") {
+      notice.innerHTML =
+        "<strong>Оплата подтверждена</strong>" +
+        "<span>Ответы анкеты не сохранились после возврата из банка. Заполните её ещё раз — повторно платить не нужно.</span>";
+    } else {
+      notice.innerHTML =
+        "<strong>Полный отчёт уже оплачен</strong>" +
+        "<span>Мы привязываем ответы к оплате. Нажмите кнопку, чтобы открыть полный разбор.</span>" +
+        '<button type="button">Открыть полный отчёт</button>';
+      notice.querySelector("button").addEventListener("click", async function () {
+        var state;
+        try {
+          state = JSON.parse(sessionStorage.getItem("relationship-code-flow-state") || "null");
+        } catch (_) {
+          state = null;
+        }
+        if (state && state.answers && state.result) {
+          await fetch("/api/attach-payment-context", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: payment.orderId,
+              paymentId: payment.paymentId,
+              answers: state.answers,
+              result: state.result
+            })
+          });
+        }
+        window.location.href = "/full-report";
+      });
+    }
+    document.body.prepend(notice);
+  }
+
   function update() {
     polishPaymentButton();
     renderReturnPage();
+    renderRecoveryNotice();
   }
 
   document.addEventListener("click", function (event) {

@@ -116,6 +116,42 @@
   opacity: 0.78;
 }
 
+.paid-recovery-notice {
+  position: relative;
+  z-index: 100;
+  display: grid;
+  gap: 7px;
+  width: min(760px, calc(100% - 32px));
+  margin: 16px auto 0;
+  padding: 18px 20px;
+  border: 1px solid rgba(184, 139, 72, 0.42);
+  border-radius: 12px;
+  background: #fff9ed;
+  color: #4a3328;
+  box-shadow: 0 10px 28px rgba(73, 43, 25, 0.1);
+}
+
+.paid-recovery-notice strong {
+  font-size: 17px;
+}
+
+.paid-recovery-notice span {
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+
+.paid-recovery-notice button {
+  min-height: 48px;
+  margin-top: 6px;
+  border: 1px solid #bd8d42;
+  border-radius: 10px;
+  background: #bd8334;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (max-width: 600px) {
   .payment-notice-dialog {
     padding: 28px 22px 22px;
@@ -129,6 +165,11 @@
   .payment-notice-dialog p,
   .payment-return-card p {
     font-size: 16px;
+  }
+
+  .paid-recovery-notice {
+    margin-top: 10px;
+    padding: 16px;
   }
 }
 
