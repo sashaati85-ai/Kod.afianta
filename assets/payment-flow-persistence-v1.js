@@ -79,6 +79,41 @@
     } catch (_) {}
   }
 
+  function restoreFromStoredPayment() {
+    var state = read(sessionStorage, FLOW_KEY);
+    var payment = read(localStorage, PAYMENT_KEY);
+    if (
+      (state && state.answers && state.result) ||
+      !payment ||
+      payment.status !== "paid" ||
+      !payment.orderId ||
+      !payment.paymentId
+    ) return;
+
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open(
+        "GET",
+        "/api/payment-context?orderId=" + encodeURIComponent(payment.orderId) +
+          "&paymentId=" + encodeURIComponent(payment.paymentId),
+        false
+      );
+      xhr.send(null);
+      if (xhr.status !== 200) return;
+      var payload = JSON.parse(xhr.responseText);
+      if (!payload.state || !payload.state.answers || !payload.state.result) return;
+      write(sessionStorage, FLOW_KEY, payload.state);
+      write(localStorage, FLOW_BACKUP_KEY, payload.state);
+      if (window.location.pathname.replace(/\/$/, "") === "/questionnaire") {
+        window.history.replaceState(
+          {},
+          "",
+          "/payment/return?orderId=" + encodeURIComponent(payment.orderId)
+        );
+      }
+    } catch (_) {}
+  }
+
   async function recoverPaidAccess() {
     var state = read(sessionStorage, FLOW_KEY) || read(localStorage, FLOW_BACKUP_KEY);
     var payment = read(localStorage, PAYMENT_KEY);
@@ -112,6 +147,7 @@
   restoreLocalBackup();
   restoreFromReturnToken();
   restorePaymentStatus();
+  restoreFromStoredPayment();
   mirrorFlow();
   window.setInterval(function () {
     mirrorFlow();

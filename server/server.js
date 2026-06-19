@@ -1220,8 +1220,21 @@ function handlePaymentContext(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const orderId = clampText(url.searchParams.get("orderId"), 120);
   const accessToken = clampText(url.searchParams.get("accessToken"), 160);
+  const paymentId = clampText(url.searchParams.get("paymentId"), 120);
   const payment = paymentCache.get(orderId);
-  if (!payment || !accessToken || !timingSafeEqualText(payment.accessToken, accessToken)) {
+  const tokenMatches = Boolean(
+    payment &&
+    accessToken &&
+    payment.accessToken &&
+    timingSafeEqualText(payment.accessToken, accessToken)
+  );
+  const paidPaymentMatches = Boolean(
+    payment &&
+    payment.status === "paid" &&
+    paymentId &&
+    timingSafeEqualText(payment.paymentId, paymentId)
+  );
+  if (!payment || (!tokenMatches && !paidPaymentMatches)) {
     sendJson(res, 404, { error: "Payment context not found" });
     return;
   }
