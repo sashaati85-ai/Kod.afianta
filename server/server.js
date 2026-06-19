@@ -1230,13 +1230,15 @@ async function handlePayformNotification(req, res) {
     console.warn("[payform-notification] rejected", {
       reason: receivedSignature ? "invalid_signature" : "missing_signature",
       contentType: req.headers["content-type"] || "",
-      orderId: clampText(payload && (payload.order_id || payload.order_num), 120),
+      orderId: clampText(payload && (payload.order_num || payload.order_id), 120),
     });
     sendJson(res, 403, { error: "Invalid signature" });
     return;
   }
 
-  const orderId = clampText(payload.order_id || payload.order_num, 120);
+  // Payform uses order_id for its internal payment id and order_num for
+  // the merchant order number passed in the payment link.
+  const orderId = clampText(payload.order_num || payload.order_id, 120);
   const payment = paymentCache.get(orderId);
   if (!payment) {
     console.warn("[payform-notification] unknown order", { orderId });
