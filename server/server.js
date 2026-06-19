@@ -10,11 +10,16 @@ const AI_MODEL = process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
 const PAID_AI_MODEL = process.env.PAID_AI_MODEL || process.env.AI_MODEL || "google/gemini-3.1-flash-lite-preview";
 const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1").replace(/\/$/, "");
 const PAID_REPORT_STORE = process.env.PAID_REPORT_STORE || path.join(__dirname, "paid-reports.json");
+const PAYMENT_STORE = process.env.PAYMENT_STORE || path.join(__dirname, "payments.json");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
+const PAYFORM_URL = (process.env.PAYFORM_URL || "https://yaity.payform.ru/").replace(/\/?$/, "/");
+const PAYFORM_SECRET_KEY = process.env.PAYFORM_SECRET_KEY || "";
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://kod.afianta.ru").replace(/\/$/, "");
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
 const reportCache = new Map();
 const paidReportCache = new Map();
+const paymentCache = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -180,7 +185,54 @@ function safeJsonParse(content) {
 }
 
 function stableHash(value) {
-  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  return crypto.createHash("sha256").update(canonicalJson(value)).digest("hex");
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value).sort().reduce((result, key) => {
+    result[key] = canonicalize(value[key]);
+    return result;
+  }, {});
+}
+
+function canonicalJson(value) {
+  return JSON.stringify(canonicalize(value));
+}
+
+function createPayformSignature(payload) {
+  return crypto
+    .createHmac("sha256", PAYFORM_SECRET_KEY)
+    .update(canonicalJson(payload))
+    .digest("hex");
+}
+
+function timingSafeEqualText(left, right) {
+  const leftBuffer = Buffer.from(String(left || "").toLowerCase(), "utf8");
+  const rightBuffer = Buffer.from(String(right || "").toLowerCase(), "utf8");
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function appendQueryValue(params, key, value) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => appendQueryValue(params, `${key}[${index}]`, item));
+    return;
+  }
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      appendQueryValue(params, key ? `${key}[${childKey}]` : childKey, childValue);
+    });
+    return;
+  }
+  params.append(key, value === undefined || value === null ? "" : String(value));
+}
+
+function buildPayformUrl(payload) {
+  const signedPayload = { ...payload, signature: createPayformSignature(payload) };
+  const params = new URLSearchParams();
+  Object.entries(signedPayload).forEach(([key, value]) => appendQueryValue(params, key, value));
+  return `${PAYFORM_URL}?${params.toString()}`;
 }
 
 function loadPaidReportStore() {
@@ -205,6 +257,28 @@ function savePaidReportStore() {
     fs.writeFileSync(PAID_REPORT_STORE, JSON.stringify(data, null, 2), "utf8");
   } catch (error) {
     console.error("[paid-report-store] save failed", error.message);
+  }
+}
+
+function loadPaymentStore() {
+  try {
+    if (!fs.existsSync(PAYMENT_STORE)) return;
+    const parsed = JSON.parse(fs.readFileSync(PAYMENT_STORE, "utf8"));
+    if (!parsed || typeof parsed !== "object") return;
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (key && value && typeof value === "object") paymentCache.set(key, value);
+    });
+  } catch (error) {
+    console.error("[payment-store] load failed", error.message);
+  }
+}
+
+function savePaymentStore() {
+  try {
+    fs.mkdirSync(path.dirname(PAYMENT_STORE), { recursive: true });
+    fs.writeFileSync(PAYMENT_STORE, JSON.stringify(Object.fromEntries(paymentCache.entries()), null, 2), "utf8");
+  } catch (error) {
+    console.error("[payment-store] save failed", error.message);
   }
 }
 
@@ -895,6 +969,19 @@ async function handleGeneratePaidReport(req, res) {
       sendJson(res, 403, { error: "Paid access is required" });
       return;
     }
+    const payment = paymentCache.get(paymentAccess.orderId);
+    if (
+      !payment ||
+      payment.status !== "paid" ||
+      payment.paymentId !== paymentAccess.paymentId ||
+      payment.contextHash !== stableHash({
+        answers: body.answers && typeof body.answers === "object" ? body.answers : {},
+        result: body.result && typeof body.result === "object" ? body.result : {},
+      })
+    ) {
+      sendJson(res, 403, { error: "Verified payment is required" });
+      return;
+    }
 
     const context = buildPaidContext(body);
     if (!context.name || !context.birthDate || !context.lifePathNumber || !context.cycleTitle) {
@@ -1005,19 +1092,55 @@ async function handleCreatePayment(req, res) {
     return;
   }
 
-  try {
-    await readJson(req);
-  } catch (_) {
-    // The instant report flow does not depend on payment payload details.
+  if (!PAYFORM_SECRET_KEY) {
+    sendJson(res, 503, { error: "Payment service is not configured" });
+    return;
   }
 
-  const orderId = `instant-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const body = await readJson(req);
+  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+  const result = body.resultSnapshot && typeof body.resultSnapshot === "object" ? body.resultSnapshot : {};
+  if (!Object.keys(answers).length || !Object.keys(result).length) {
+    sendJson(res, 400, { error: "Invalid payment context" });
+    return;
+  }
+
+  const orderId = `kod-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+  const amount = PRODUCT_PRICE_RUB.toFixed(2);
+  const returnUrl = `${PUBLIC_BASE_URL}/payment/return?orderId=${encodeURIComponent(orderId)}`;
+  const payload = {
+    do: "pay",
+    order_id: orderId,
+    order_sum: amount,
+    customer_extra: "Полный персональный расчёт отношений",
+    products: [{
+      name: "Полный персональный расчёт отношений",
+      price: amount,
+      quantity: "1",
+      sum: amount,
+    }],
+    urlReturn: returnUrl,
+    urlSuccess: returnUrl,
+    urlNotification: `${PUBLIC_BASE_URL}/api/payform-notification`,
+    callbackType: "json",
+    sys: "kod.afianta.ru",
+  };
+
+  paymentCache.set(orderId, {
+    paymentId: orderId,
+    orderId,
+    amount,
+    status: "pending",
+    contextHash: stableHash({ answers, result }),
+    createdAt: new Date().toISOString(),
+  });
+  savePaymentStore();
+
   sendJson(res, 200, {
     paymentId: orderId,
     orderId,
-    amount: "0.00",
-    confirmationUrl: `/payment/return?orderId=${encodeURIComponent(orderId)}&instant=1`,
-    instant: true,
+    amount,
+    confirmationUrl: buildPayformUrl(payload),
   });
 }
 
@@ -1027,12 +1150,63 @@ function handlePaymentStatus(req, res) {
     return;
   }
 
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const paymentId = clampText(url.searchParams.get("paymentId"), 120);
+  const orderId = clampText(url.searchParams.get("orderId"), 120);
+  const payment = paymentCache.get(orderId || paymentId);
+  if (!payment) {
+    sendJson(res, 404, { status: "missing", paid: false, matchesOrderId: false });
+    return;
+  }
   sendJson(res, 200, {
-    status: "succeeded",
-    paid: true,
-    matchesOrderId: true,
-    instant: true,
+    status: payment.status === "paid" ? "succeeded" : payment.status,
+    paid: payment.status === "paid",
+    matchesOrderId: payment.paymentId === paymentId && payment.orderId === orderId,
   });
+}
+
+async function handlePayformNotification(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!PAYFORM_SECRET_KEY) {
+    sendJson(res, 503, { error: "Payment service is not configured" });
+    return;
+  }
+
+  const rawBody = await readBody(req);
+  let payload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch (_) {
+    payload = Object.fromEntries(new URLSearchParams(rawBody).entries());
+  }
+
+  const receivedSignature = req.headers.sign || req.headers.signature || payload.signature || "";
+  if (payload && Object.prototype.hasOwnProperty.call(payload, "signature")) delete payload.signature;
+  if (!receivedSignature || !timingSafeEqualText(createPayformSignature(payload), receivedSignature)) {
+    sendJson(res, 403, { error: "Invalid signature" });
+    return;
+  }
+
+  const orderId = clampText(payload.order_id || payload.order_num, 120);
+  const payment = paymentCache.get(orderId);
+  if (!payment) {
+    sendJson(res, 404, { error: "Unknown order" });
+    return;
+  }
+
+  const status = String(payload.payment_status || payload.status || "").toLowerCase();
+  const paid = ["success", "succeeded", "paid"].includes(status);
+  payment.status = paid ? "paid" : (status || "pending");
+  payment.providerPaymentId = clampText(payload.payment_id, 120);
+  payment.updatedAt = new Date().toISOString();
+  if (paid) payment.paidAt = payment.updatedAt;
+  savePaymentStore();
+
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+  res.end("success");
 }
 
 function serveStatic(req, res) {
@@ -1077,6 +1251,10 @@ const server = http.createServer(async (req, res) => {
       handlePaymentStatus(req, res);
       return;
     }
+    if (url.pathname === "/api/payform-notification") {
+      await handlePayformNotification(req, res);
+      return;
+    }
     serveStatic(req, res);
   } catch (error) {
     console.error("[server]", error);
@@ -1085,6 +1263,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 loadPaidReportStore();
+loadPaymentStore();
 
 server.listen(PORT, () => {
   console.log(`KOD site server listening on ${PORT}`);
