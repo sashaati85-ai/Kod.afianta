@@ -2,6 +2,7 @@
   "use strict";
 
   var FLOW_KEY = "relationship-code-flow-state";
+  var FLOW_BACKUP_KEY = "relationship-code-flow-backup";
   var PAYMENT_KEY = "relationship-code-payment-access";
   var CACHE_PREFIX = "kod-paid-report-ai-v3:";
 
@@ -16,6 +17,14 @@
 
   function getState() {
     var state = readJsonStorage(window.sessionStorage, FLOW_KEY);
+    if (!state || !state.answers || !state.result) {
+      state = readJsonStorage(window.localStorage, FLOW_BACKUP_KEY);
+      if (state && state.answers && state.result) {
+        try {
+          window.sessionStorage.setItem(FLOW_KEY, JSON.stringify(state));
+        } catch (_) {}
+      }
+    }
     if (!state || !state.answers || !state.result) return null;
     return state;
   }

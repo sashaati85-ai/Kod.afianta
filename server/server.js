@@ -1145,8 +1145,9 @@ async function handleCreatePayment(req, res) {
   }
 
   const orderId = `kod-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+  const accessToken = crypto.randomBytes(32).toString("hex");
   const amount = PRODUCT_PRICE_RUB.toFixed(2);
-  const returnUrl = `${PUBLIC_BASE_URL}/payment/return?orderId=${encodeURIComponent(orderId)}`;
+  const returnUrl = `${PUBLIC_BASE_URL}/payment/return?orderId=${encodeURIComponent(orderId)}&accessToken=${encodeURIComponent(accessToken)}`;
   const payload = {
     do: "pay",
     order_id: orderId,
@@ -1164,7 +1165,7 @@ async function handleCreatePayment(req, res) {
     callbackType: "json",
     // Payform requires this parameter for per-order notifications.
     // Self-built integrations must leave the provider-issued system code empty.
-    sys: "",
+    sys: "kod.afianta.ru",
   };
 
   paymentCache.set(orderId, {
@@ -1172,6 +1173,9 @@ async function handleCreatePayment(req, res) {
     orderId,
     amount,
     status: "pending",
+    accessToken,
+    answers,
+    result,
     contextHash: stableHash({ answers, result }),
     createdAt: new Date().toISOString(),
   });
@@ -1181,6 +1185,7 @@ async function handleCreatePayment(req, res) {
     paymentId: orderId,
     orderId,
     amount,
+    accessToken,
     confirmationUrl: buildPayformUrl(payload),
   });
 }
@@ -1204,6 +1209,67 @@ function handlePaymentStatus(req, res) {
     paid: payment.status === "paid",
     matchesOrderId: payment.paymentId === paymentId && payment.orderId === orderId,
   });
+}
+
+function handlePaymentContext(req, res) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const orderId = clampText(url.searchParams.get("orderId"), 120);
+  const accessToken = clampText(url.searchParams.get("accessToken"), 160);
+  const payment = paymentCache.get(orderId);
+  if (!payment || !accessToken || !timingSafeEqualText(payment.accessToken, accessToken)) {
+    sendJson(res, 404, { error: "Payment context not found" });
+    return;
+  }
+
+  sendJson(res, 200, {
+    state: {
+      answers: payment.answers || {},
+      result: payment.result || null,
+    },
+    payment: {
+      paymentId: payment.paymentId,
+      orderId: payment.orderId,
+      amount: payment.amount,
+      status: payment.status === "paid" ? "paid" : "pending",
+      paidAt: payment.paidAt || "",
+    },
+  });
+}
+
+async function handleAttachPaymentContext(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const body = await readJson(req);
+  const orderId = clampText(body.orderId, 120);
+  const paymentId = clampText(body.paymentId, 120);
+  const payment = paymentCache.get(orderId);
+  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+  const result = body.result && typeof body.result === "object" ? body.result : {};
+  if (
+    !payment ||
+    payment.status !== "paid" ||
+    payment.paymentId !== paymentId ||
+    !Object.keys(answers).length ||
+    !Object.keys(result).length
+  ) {
+    sendJson(res, 403, { error: "Verified paid order is required" });
+    return;
+  }
+
+  payment.answers = answers;
+  payment.result = result;
+  payment.contextHash = stableHash({ answers, result });
+  payment.contextAttachedAt = new Date().toISOString();
+  savePaymentStore();
+  sendJson(res, 200, { attached: true, paid: true });
 }
 
 async function handlePayformNotification(req, res) {
@@ -1303,6 +1369,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/payment-status") {
       handlePaymentStatus(req, res);
+      return;
+    }
+    if (url.pathname === "/api/payment-context") {
+      handlePaymentContext(req, res);
+      return;
+    }
+    if (url.pathname === "/api/attach-payment-context") {
+      await handleAttachPaymentContext(req, res);
       return;
     }
     if (url.pathname === "/api/payform-notification") {

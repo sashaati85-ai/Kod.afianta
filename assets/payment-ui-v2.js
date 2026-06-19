@@ -55,14 +55,15 @@
 
   function isBuyButton(button) {
     var text = (button.textContent || "").trim().toLowerCase();
-    return text === "купить" || text === "оплатить полный расчёт";
+    return text === "купить" || text === "оплатить полный расчёт" || text === "полный отчёт";
   }
 
   function polishPaymentButton() {
     if (window.location.pathname.replace(/\/$/, "") !== "/payment") return;
+    var payment = readPayment();
     document.querySelectorAll("button").forEach(function (button) {
       if (button.textContent.trim() === "Купить") {
-        button.textContent = "Оплатить полный расчёт";
+        button.textContent = payment && payment.status === "paid" ? "Полный отчёт" : "Оплатить полный расчёт";
       }
     });
   }
@@ -147,9 +148,14 @@
     if (confirmingPayment || window.location.pathname.replace(/\/$/, "") !== "/payment") return;
     var button = event.target.closest && event.target.closest("button");
     if (!button || !isBuyButton(button) || button.disabled) return;
+    var payment = readPayment();
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if (payment && payment.status === "paid") {
+      window.location.href = "/full-report";
+      return;
+    }
     showPaymentNotice(button);
   }, true);
 
