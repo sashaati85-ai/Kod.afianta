@@ -243,6 +243,30 @@ function appendQueryValue(params, key, value) {
   params.append(key, value === undefined || value === null ? "" : String(value));
 }
 
+function mergeNestedValue(target, keys, value) {
+  const key = keys[0];
+  const isIndex = /^\d+$/.test(key);
+  const normalizedKey = isIndex ? Number(key) : key;
+  if (keys.length === 1) {
+    target[normalizedKey] = value;
+    return;
+  }
+  const nextIsIndex = /^\d+$/.test(keys[1]);
+  if (!target[normalizedKey] || typeof target[normalizedKey] !== "object") {
+    target[normalizedKey] = nextIsIndex ? [] : {};
+  }
+  mergeNestedValue(target[normalizedKey], keys.slice(1), value);
+}
+
+function parseFormPayload(rawBody) {
+  const result = {};
+  new URLSearchParams(rawBody).forEach((value, rawKey) => {
+    const keys = rawKey.match(/[^[\]]+/g) || [rawKey];
+    mergeNestedValue(result, keys, value);
+  });
+  return result;
+}
+
 function buildPayformUrl(payload) {
   const signedPayload = { ...payload, signature: createPayformSignature(payload) };
   const params = new URLSearchParams();
@@ -1138,7 +1162,9 @@ async function handleCreatePayment(req, res) {
     urlSuccess: returnUrl,
     urlNotification: `${PUBLIC_BASE_URL}/api/payform-notification`,
     callbackType: "json",
-    sys: "kod.afianta.ru",
+    // Payform requires this parameter for per-order notifications.
+    // Self-built integrations must leave the provider-issued system code empty.
+    sys: "",
   };
 
   paymentCache.set(orderId, {
@@ -1195,12 +1221,17 @@ async function handlePayformNotification(req, res) {
   try {
     payload = JSON.parse(rawBody);
   } catch (_) {
-    payload = Object.fromEntries(new URLSearchParams(rawBody).entries());
+    payload = parseFormPayload(rawBody);
   }
 
   const receivedSignature = req.headers.sign || req.headers.signature || payload.signature || "";
   if (payload && Object.prototype.hasOwnProperty.call(payload, "signature")) delete payload.signature;
   if (!receivedSignature || !timingSafeEqualText(createPayformSignature(payload), receivedSignature)) {
+    console.warn("[payform-notification] rejected", {
+      reason: receivedSignature ? "invalid_signature" : "missing_signature",
+      contentType: req.headers["content-type"] || "",
+      orderId: clampText(payload && (payload.order_id || payload.order_num), 120),
+    });
     sendJson(res, 403, { error: "Invalid signature" });
     return;
   }
@@ -1208,6 +1239,7 @@ async function handlePayformNotification(req, res) {
   const orderId = clampText(payload.order_id || payload.order_num, 120);
   const payment = paymentCache.get(orderId);
   if (!payment) {
+    console.warn("[payform-notification] unknown order", { orderId });
     sendJson(res, 404, { error: "Unknown order" });
     return;
   }
@@ -1219,6 +1251,11 @@ async function handlePayformNotification(req, res) {
   payment.updatedAt = new Date().toISOString();
   if (paid) payment.paidAt = payment.updatedAt;
   savePaymentStore();
+  console.log("[payform-notification] processed", {
+    orderId,
+    status: payment.status,
+    paid,
+  });
 
   res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
   res.end("success");
