@@ -201,10 +201,25 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalize(value));
 }
 
+function stringifyPayformValues(value) {
+  if (Array.isArray(value)) return value.map(stringifyPayformValues);
+  if (value && typeof value === "object") {
+    return Object.keys(value).reduce((result, key) => {
+      result[key] = stringifyPayformValues(value[key]);
+      return result;
+    }, {});
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function payformSignatureJson(value) {
+  return JSON.stringify(canonicalize(stringifyPayformValues(value))).replace(/\//g, "\\/");
+}
+
 function createPayformSignature(payload) {
   return crypto
     .createHmac("sha256", PAYFORM_SECRET_KEY)
-    .update(canonicalJson(payload))
+    .update(payformSignatureJson(payload))
     .digest("hex");
 }
 
