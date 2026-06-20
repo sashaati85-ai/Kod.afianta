@@ -291,6 +291,7 @@
   }
 
   var runningHash = "";
+  var runningPromise = null;
   async function run() {
     if (window.location.pathname.replace(/\/$/, "") !== "/full-report") return;
     var state = getState();
@@ -299,17 +300,24 @@
     if (!state || !access || !main) return;
 
     var hash = await makeHash(state, access);
+    if (runningHash === hash && runningPromise) return runningPromise;
     if (runningHash === hash && document.querySelector(".ai-paid-report")) return;
     runningHash = hash;
 
     renderStatus(main);
-    try {
-      var payload = await fetchPaidReport(state, access, hash);
-      renderReport(main, payload, state);
-    } catch (error) {
-      console.warn("[KOD] paid AI report fallback:", error);
-      renderError(main);
-    }
+    runningPromise = (async function () {
+      try {
+        var payload = await fetchPaidReport(state, access, hash);
+        renderReport(main, payload, state);
+      } catch (error) {
+        runningHash = "";
+        console.warn("[KOD] paid AI report fallback:", error);
+        renderError(main);
+      } finally {
+        runningPromise = null;
+      }
+    })();
+    return runningPromise;
   }
 
   function scheduleRun() {

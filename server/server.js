@@ -20,6 +20,7 @@ const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
 const reportCache = new Map();
 const paidReportCache = new Map();
 const paymentCache = new Map();
+const paidReportInFlight = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -634,6 +635,8 @@ function buildUserPrompt(context) {
 }
 
 async function callAi(context) {
+  throw new Error("Free AI generation is disabled; use the local free_template report");
+  /* istanbul ignore next */
   if (!AI_API_KEY) throw new Error("AI_API_KEY is not configured");
 
   const response = await fetch(`${AI_API_BASE_URL}/chat/completions`, {
@@ -1040,24 +1043,60 @@ async function handleGeneratePaidReport(req, res) {
       return;
     }
 
-    let source = "paid_ai";
-    let report;
-    try {
-      report = await callPaidAi(context);
-    } catch (error) {
-      source = "paid_fallback";
-      report = buildPaidFallbackReport(context);
-      console.error("[generate-paid-report]", error.message);
+    let generation = paidReportInFlight.get(hash);
+    if (!generation) {
+      generation = (async () => {
+        let source = "paid_ai";
+        let report;
+        const startedAt = Date.now();
+        console.log("[paid-ai] started", {
+          hash: hash.slice(0, 12),
+          orderId: paymentAccess.orderId,
+          model: PAID_AI_MODEL,
+        });
+        try {
+          report = await callPaidAi(context);
+        } catch (error) {
+          source = "paid_fallback";
+          report = buildPaidFallbackReport(context);
+          console.error("[paid-ai] fallback", {
+            hash: hash.slice(0, 12),
+            orderId: paymentAccess.orderId,
+            durationMs: Date.now() - startedAt,
+            error: error.message,
+          });
+        }
+
+        const generatedRecord = {
+          report,
+          source,
+          model: source === "paid_ai" ? PAID_AI_MODEL : "fallback",
+          createdAt: new Date().toISOString(),
+        };
+        paidReportCache.set(hash, generatedRecord);
+        savePaidReportStore();
+        console.log("[paid-ai] completed", {
+          hash: hash.slice(0, 12),
+          orderId: paymentAccess.orderId,
+          source,
+          durationMs: Date.now() - startedAt,
+        });
+        return generatedRecord;
+      })();
+      paidReportInFlight.set(hash, generation);
+      generation.finally(() => {
+        if (paidReportInFlight.get(hash) === generation) paidReportInFlight.delete(hash);
+      });
+    } else {
+      console.log("[paid-ai] joined-in-flight", {
+        hash: hash.slice(0, 12),
+        orderId: paymentAccess.orderId,
+      });
     }
 
-    const record = {
-      report,
-      source,
-      model: source === "paid_ai" ? PAID_AI_MODEL : "fallback",
-      createdAt: new Date().toISOString(),
-    };
-    paidReportCache.set(hash, record);
-    savePaidReportStore();
+    const record = await generation;
+    const report = enforcePaidContextRules(record.report, context);
+    const source = record.source;
     sendJson(res, 200, { report, source, hash, createdAt: record.createdAt, model: record.model });
   } catch (error) {
     console.error("[generate-paid-report]", error);
