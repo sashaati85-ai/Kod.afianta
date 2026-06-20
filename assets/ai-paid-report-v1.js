@@ -121,9 +121,9 @@
     main.textContent = "";
     var shell = el("div", "ai-paid-report-status");
     var card = el("section", "ai-paid-report-status-card");
-    card.appendChild(el("div", "ai-paid-status-kicker", "Генерация отчёта"));
-    card.appendChild(el("h1", "ai-paid-status-title", "Собираем ваш персональный разбор"));
-    card.appendChild(el("p", "ai-paid-status-text", "Нейросеть анализирует ответы анкеты, числовой код и текущий сценарий отношений. Обычно это занимает несколько секунд."));
+    card.appendChild(el("div", "ai-paid-status-kicker", "Подготовка отчёта"));
+    card.appendChild(el("h1", "ai-paid-status-title", "Оформляем ваш персональный разбор"));
+    card.appendChild(el("p", "ai-paid-status-text", "Собираем ответы анкеты, расчёты и рекомендации в единый полный отчёт. Обычно это занимает несколько секунд."));
     card.appendChild(el("div", "ai-paid-progress"));
     shell.appendChild(card);
     main.appendChild(shell);
@@ -131,7 +131,7 @@
 
   function renderError(main) {
     var card = el("section", "ai-paid-error");
-    card.textContent = "Не удалось получить отчёт от нейросети прямо сейчас. Мы оставили резервный структурированный разбор, чтобы вы не потеряли доступ к материалу.";
+    card.textContent = "Подготовка заняла больше времени, чем обычно. Ваш доступ сохранён — обновите страницу через несколько секунд.";
     main.insertBefore(card, main.firstChild);
   }
 
@@ -250,6 +250,36 @@
     main.appendChild(root);
     if (source === "paid_fallback" && isDebugMode()) renderError(main);
   }
+
+  renderStatus = function (main) {
+    main.textContent = "";
+    var shell = el("div", "ai-paid-report-status");
+    var card = el("section", "ai-paid-report-status-card ai-paid-preparing");
+    var visual = el("div", "ai-paid-preparing-visual");
+    var logo = document.createElement("img");
+    logo.className = "ai-paid-preparing-logo";
+    logo.src = "/assets/logo-gold-DMOg8YAH.png";
+    logo.alt = "Александр и Анна";
+    visual.appendChild(logo);
+    ["♡", "♥", "♡", "♥", "♡", "♥"].forEach(function (heart, index) {
+      var node = el("span", "ai-paid-preparing-heart ai-paid-preparing-heart-" + (index + 1), heart);
+      node.setAttribute("aria-hidden", "true");
+      visual.appendChild(node);
+    });
+    card.appendChild(visual);
+    card.appendChild(el("div", "ai-paid-status-kicker", "Подготовка отчёта"));
+    card.appendChild(el("h1", "ai-paid-status-title", "Оформляем ваш персональный разбор"));
+    card.appendChild(el("p", "ai-paid-status-text", "Собираем ответы анкеты, расчёты и рекомендации в единый полный отчёт. Обычно это занимает несколько секунд."));
+    card.appendChild(el("div", "ai-paid-progress"));
+    shell.appendChild(card);
+    main.appendChild(shell);
+  };
+
+  renderError = function (main) {
+    var card = el("section", "ai-paid-error");
+    card.textContent = "Подготовка заняла больше времени, чем обычно. Ваш доступ сохранён — обновите страницу через несколько секунд.";
+    main.insertBefore(card, main.firstChild);
+  };
 
   function isValidReportPayload(payload) {
     return Boolean(

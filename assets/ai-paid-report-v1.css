@@ -25,6 +25,50 @@
   padding: 30px;
 }
 
+.ai-paid-preparing {
+  text-align: center;
+}
+
+.ai-paid-preparing-visual {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 22px;
+}
+
+.ai-paid-preparing-logo {
+  position: absolute;
+  inset: 28px;
+  width: 94px;
+  height: 94px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: rgba(255, 253, 247, 0.96);
+  box-shadow: 0 14px 38px rgba(124, 80, 36, 0.18);
+}
+
+.ai-paid-preparing-heart {
+  position: absolute;
+  left: 66px;
+  top: 4px;
+  color: #b9843e;
+  font-size: 20px;
+  transform-origin: 9px 71px;
+  animation: ai-paid-heart-orbit 4.8s linear infinite;
+}
+
+.ai-paid-preparing-heart-2 { animation-delay: -0.8s; }
+.ai-paid-preparing-heart-3 { animation-delay: -1.6s; }
+.ai-paid-preparing-heart-4 { animation-delay: -2.4s; }
+.ai-paid-preparing-heart-5 { animation-delay: -3.2s; }
+.ai-paid-preparing-heart-6 { animation-delay: -4s; }
+
+@keyframes ai-paid-heart-orbit {
+  from { transform: rotate(0deg) translateY(-2px) rotate(0deg); opacity: 0.55; }
+  50% { opacity: 1; }
+  to { transform: rotate(360deg) translateY(-2px) rotate(-360deg); opacity: 0.55; }
+}
+
 .ai-paid-status-kicker,
 .ai-paid-kicker {
   color: #a47a3d;
@@ -240,5 +284,9 @@
     animation: none;
     transform: none;
     width: 100%;
+  }
+
+  .ai-paid-preparing-heart {
+    animation: none;
   }
 }

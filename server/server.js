@@ -12,8 +12,9 @@ const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1
 const PAID_REPORT_STORE = process.env.PAID_REPORT_STORE || path.join(__dirname, "paid-reports.json");
 const PAYMENT_STORE = process.env.PAYMENT_STORE || path.join(__dirname, "payments.json");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
-const PAYFORM_URL = (process.env.PAYFORM_URL || "https://yaity.payform.ru/").replace(/\/?$/, "/");
-const PAYFORM_SECRET_KEY = process.env.PAYFORM_SECRET_KEY || "";
+const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || "";
+const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || "";
+const YOOKASSA_API_URL = (process.env.YOOKASSA_API_URL || "https://api.yookassa.ru/v3").replace(/\/$/, "");
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://kod.afianta.ru").replace(/\/$/, "");
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
@@ -202,77 +203,48 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalize(value));
 }
 
-function stringifyPayformValues(value) {
-  if (Array.isArray(value)) return value.map(stringifyPayformValues);
-  if (value && typeof value === "object") {
-    return Object.keys(value).reduce((result, key) => {
-      result[key] = stringifyPayformValues(value[key]);
-      return result;
-    }, {});
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
-function payformSignatureJson(value) {
-  return JSON.stringify(canonicalize(stringifyPayformValues(value))).replace(/\//g, "\\/");
-}
-
-function createPayformSignature(payload) {
-  return crypto
-    .createHmac("sha256", PAYFORM_SECRET_KEY)
-    .update(payformSignatureJson(payload))
-    .digest("hex");
-}
-
 function timingSafeEqualText(left, right) {
   const leftBuffer = Buffer.from(String(left || "").toLowerCase(), "utf8");
   const rightBuffer = Buffer.from(String(right || "").toLowerCase(), "utf8");
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function appendQueryValue(params, key, value) {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => appendQueryValue(params, `${key}[${index}]`, item));
-    return;
+async function yookassaRequest(pathname, options = {}) {
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) {
+    throw new Error("YooKassa is not configured");
   }
-  if (value && typeof value === "object") {
-    Object.entries(value).forEach(([childKey, childValue]) => {
-      appendQueryValue(params, key ? `${key}[${childKey}]` : childKey, childValue);
-    });
-    return;
+  const headers = {
+    "Authorization": `Basic ${Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString("base64")}`,
+    "Accept": "application/json",
+    ...(options.headers || {}),
+  };
+  const response = await fetch(`${YOOKASSA_API_URL}${pathname}`, { ...options, headers });
+  const responseText = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(responseText);
+  } catch (_) {
+    payload = null;
   }
-  params.append(key, value === undefined || value === null ? "" : String(value));
+  if (!response.ok) {
+    const description = payload && (payload.description || payload.code)
+      ? `${payload.code || "error"}: ${payload.description || ""}`
+      : responseText;
+    throw new Error(`YooKassa API failed (${response.status}): ${description}`);
+  }
+  return payload;
 }
 
-function mergeNestedValue(target, keys, value) {
-  const key = keys[0];
-  const isIndex = /^\d+$/.test(key);
-  const normalizedKey = isIndex ? Number(key) : key;
-  if (keys.length === 1) {
-    target[normalizedKey] = value;
-    return;
-  }
-  const nextIsIndex = /^\d+$/.test(keys[1]);
-  if (!target[normalizedKey] || typeof target[normalizedKey] !== "object") {
-    target[normalizedKey] = nextIsIndex ? [] : {};
-  }
-  mergeNestedValue(target[normalizedKey], keys.slice(1), value);
-}
-
-function parseFormPayload(rawBody) {
-  const result = {};
-  new URLSearchParams(rawBody).forEach((value, rawKey) => {
-    const keys = rawKey.match(/[^[\]]+/g) || [rawKey];
-    mergeNestedValue(result, keys, value);
-  });
-  return result;
-}
-
-function buildPayformUrl(payload) {
-  const signedPayload = { ...payload, signature: createPayformSignature(payload) };
-  const params = new URLSearchParams();
-  Object.entries(signedPayload).forEach(([key, value]) => appendQueryValue(params, key, value));
-  return `${PAYFORM_URL}?${params.toString()}`;
+function applyYookassaPayment(payment, providerPayment) {
+  if (!payment || !providerPayment) return;
+  payment.provider = "yookassa";
+  payment.providerPaymentId = clampText(providerPayment.id, 120);
+  payment.paymentId = payment.providerPaymentId || payment.paymentId;
+  payment.status = providerPayment.status === "succeeded"
+    ? "paid"
+    : clampText(providerPayment.status, 40) || "pending";
+  payment.updatedAt = new Date().toISOString();
+  if (payment.status === "paid") payment.paidAt = payment.updatedAt;
 }
 
 function loadPaidReportStore() {
@@ -1164,71 +1136,6 @@ async function handleProductSettings(req, res) {
   sendJson(res, 405, { error: "Method not allowed" });
 }
 
-async function handleCreatePayment(req, res) {
-  if (req.method !== "POST") {
-    sendJson(res, 405, { error: "Method not allowed" });
-    return;
-  }
-
-  if (!PAYFORM_SECRET_KEY) {
-    sendJson(res, 503, { error: "Payment service is not configured" });
-    return;
-  }
-
-  const body = await readJson(req);
-  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
-  const result = body.resultSnapshot && typeof body.resultSnapshot === "object" ? body.resultSnapshot : {};
-  if (!Object.keys(answers).length || !Object.keys(result).length) {
-    sendJson(res, 400, { error: "Invalid payment context" });
-    return;
-  }
-
-  const orderId = `kod-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
-  const accessToken = crypto.randomBytes(32).toString("hex");
-  const amount = PRODUCT_PRICE_RUB.toFixed(2);
-  const returnUrl = `${PUBLIC_BASE_URL}/payment/return?orderId=${encodeURIComponent(orderId)}&accessToken=${encodeURIComponent(accessToken)}`;
-  const payload = {
-    do: "pay",
-    order_id: orderId,
-    order_sum: amount,
-    customer_extra: "Полный персональный расчёт отношений",
-    products: [{
-      name: "Полный персональный расчёт отношений",
-      price: amount,
-      quantity: "1",
-      sum: amount,
-    }],
-    urlReturn: returnUrl,
-    urlSuccess: returnUrl,
-    urlNotification: `${PUBLIC_BASE_URL}/api/payform-notification`,
-    callbackType: "json",
-    // Payform requires this parameter for per-order notifications.
-    // Self-built integrations must leave the provider-issued system code empty.
-    sys: "kod.afianta.ru",
-  };
-
-  paymentCache.set(orderId, {
-    paymentId: orderId,
-    orderId,
-    amount,
-    status: "pending",
-    accessToken,
-    answers,
-    result,
-    contextHash: stableHash({ answers, result }),
-    createdAt: new Date().toISOString(),
-  });
-  savePaymentStore();
-
-  sendJson(res, 200, {
-    paymentId: orderId,
-    orderId,
-    amount,
-    accessToken,
-    confirmationUrl: buildPayformUrl(payload),
-  });
-}
-
 function handlePaymentStatus(req, res) {
   if (req.method !== "GET") {
     sendJson(res, 405, { error: "Method not allowed" });
@@ -1324,61 +1231,150 @@ async function handleAttachPaymentContext(req, res) {
   sendJson(res, 200, { attached: true, paid: true });
 }
 
-async function handlePayformNotification(req, res) {
+async function handleCreateYookassaPayment(req, res) {
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed" });
     return;
   }
-  if (!PAYFORM_SECRET_KEY) {
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) {
     sendJson(res, 503, { error: "Payment service is not configured" });
     return;
   }
 
-  const rawBody = await readBody(req);
-  let payload;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch (_) {
-    payload = parseFormPayload(rawBody);
-  }
-
-  const receivedSignature = req.headers.sign || req.headers.signature || payload.signature || "";
-  if (payload && Object.prototype.hasOwnProperty.call(payload, "signature")) delete payload.signature;
-  if (!receivedSignature || !timingSafeEqualText(createPayformSignature(payload), receivedSignature)) {
-    console.warn("[payform-notification] rejected", {
-      reason: receivedSignature ? "invalid_signature" : "missing_signature",
-      contentType: req.headers["content-type"] || "",
-      orderId: clampText(payload && (payload.order_num || payload.order_id), 120),
-    });
-    sendJson(res, 403, { error: "Invalid signature" });
+  const body = await readJson(req);
+  const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
+  const result = body.resultSnapshot && typeof body.resultSnapshot === "object" ? body.resultSnapshot : {};
+  if (!Object.keys(answers).length || !Object.keys(result).length) {
+    sendJson(res, 400, { error: "Invalid payment context" });
     return;
   }
 
-  // Payform uses order_id for its internal payment id and order_num for
-  // the merchant order number passed in the payment link.
-  const orderId = clampText(payload.order_num || payload.order_id, 120);
-  const payment = paymentCache.get(orderId);
+  const orderId = `kod-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+  const accessToken = crypto.randomBytes(32).toString("hex");
+  const amount = PRODUCT_PRICE_RUB.toFixed(2);
+  const returnUrl = `${PUBLIC_BASE_URL}/payment/return?orderId=${encodeURIComponent(orderId)}&accessToken=${encodeURIComponent(accessToken)}`;
+  const providerPayment = await yookassaRequest("/payments", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotence-Key": orderId,
+    },
+    body: JSON.stringify({
+      amount: { value: amount, currency: "RUB" },
+      capture: true,
+      confirmation: { type: "redirect", return_url: returnUrl },
+      description: "Полный персональный отчёт",
+      metadata: { orderId },
+    }),
+  });
+  const confirmationUrl = providerPayment && providerPayment.confirmation
+    ? providerPayment.confirmation.confirmation_url
+    : "";
+  if (!providerPayment || !providerPayment.id || !confirmationUrl) {
+    throw new Error("YooKassa did not return a confirmation URL");
+  }
+
+  paymentCache.set(orderId, {
+    provider: "yookassa",
+    providerPaymentId: providerPayment.id,
+    paymentId: providerPayment.id,
+    orderId,
+    amount,
+    status: providerPayment.status || "pending",
+    accessToken,
+    answers,
+    result,
+    contextHash: stableHash({ answers, result }),
+    createdAt: new Date().toISOString(),
+  });
+  savePaymentStore();
+
+  sendJson(res, 200, {
+    paymentId: providerPayment.id,
+    orderId,
+    amount,
+    accessToken,
+    confirmationUrl,
+  });
+}
+
+async function handleYookassaPaymentStatus(req, res) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const paymentId = clampText(url.searchParams.get("paymentId"), 120);
+  const orderId = clampText(url.searchParams.get("orderId"), 120);
+  const payment = paymentCache.get(orderId || paymentId);
   if (!payment) {
-    console.warn("[payform-notification] unknown order", { orderId });
+    sendJson(res, 404, { status: "missing", paid: false, matchesOrderId: false });
+    return;
+  }
+
+  if (payment.provider === "yookassa" && payment.status !== "paid") {
+    try {
+      const providerPayment = await yookassaRequest(`/payments/${encodeURIComponent(payment.providerPaymentId || payment.paymentId)}`);
+      applyYookassaPayment(payment, providerPayment);
+      savePaymentStore();
+    } catch (error) {
+      console.warn("[yookassa-status]", { orderId: payment.orderId, error: error.message });
+    }
+  }
+
+  sendJson(res, 200, {
+    status: payment.status === "paid" ? "succeeded" : payment.status,
+    paid: payment.status === "paid",
+    matchesOrderId: payment.paymentId === paymentId && payment.orderId === orderId,
+  });
+}
+
+async function handleYookassaNotification(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) {
+    sendJson(res, 503, { error: "Payment service is not configured" });
+    return;
+  }
+
+  const payload = await readJson(req);
+  const notificationPayment = payload && payload.object && typeof payload.object === "object"
+    ? payload.object
+    : null;
+  const providerPaymentId = clampText(notificationPayment && notificationPayment.id, 120);
+  if (!providerPaymentId) {
+    sendJson(res, 400, { error: "Invalid notification" });
+    return;
+  }
+
+  const verifiedPayment = await yookassaRequest(`/payments/${encodeURIComponent(providerPaymentId)}`);
+  const orderId = clampText(verifiedPayment && verifiedPayment.metadata && verifiedPayment.metadata.orderId, 120);
+  const payment = paymentCache.get(orderId);
+  if (!payment || payment.providerPaymentId !== verifiedPayment.id) {
+    console.warn("[yookassa-notification] unknown payment", { orderId, providerPaymentId });
     sendJson(res, 404, { error: "Unknown order" });
     return;
   }
 
-  const status = String(payload.payment_status || payload.status || "").toLowerCase();
-  const paid = ["success", "succeeded", "paid"].includes(status);
-  payment.status = paid ? "paid" : (status || "pending");
-  payment.providerPaymentId = clampText(payload.payment_id, 120);
-  payment.updatedAt = new Date().toISOString();
-  if (paid) payment.paidAt = payment.updatedAt;
+  const verifiedAmount = verifiedPayment.amount && verifiedPayment.amount.value
+    ? Number(verifiedPayment.amount.value)
+    : NaN;
+  if (!Number.isFinite(verifiedAmount) || verifiedAmount !== Number(payment.amount)) {
+    sendJson(res, 409, { error: "Payment amount mismatch" });
+    return;
+  }
+
+  applyYookassaPayment(payment, verifiedPayment);
   savePaymentStore();
-  console.log("[payform-notification] processed", {
+  console.log("[yookassa-notification] processed", {
     orderId,
     status: payment.status,
-    paid,
+    event: clampText(payload.event, 80),
   });
-
-  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
-  res.end("success");
+  sendJson(res, 200, { received: true });
 }
 
 function serveStatic(req, res) {
@@ -1416,11 +1412,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/create-payment") {
-      await handleCreatePayment(req, res);
+      await handleCreateYookassaPayment(req, res);
       return;
     }
     if (url.pathname === "/api/payment-status") {
-      handlePaymentStatus(req, res);
+      await handleYookassaPaymentStatus(req, res);
       return;
     }
     if (url.pathname === "/api/payment-context") {
@@ -1431,8 +1427,8 @@ const server = http.createServer(async (req, res) => {
       await handleAttachPaymentContext(req, res);
       return;
     }
-    if (url.pathname === "/api/payform-notification") {
-      await handlePayformNotification(req, res);
+    if (url.pathname === "/api/yookassa-notification") {
+      await handleYookassaNotification(req, res);
       return;
     }
     serveStatic(req, res);
