@@ -307,7 +307,7 @@ function renderLegalDocument(pathname, options = {}) {
     <title>${title} — Код отношений</title>
     <link rel="stylesheet" href="/assets/local-fonts-v1.css?v=1" />
     <link rel="stylesheet" href="/assets/index-CSe4HaY7.css" />
-    <link rel="stylesheet" href="/assets/legal-compliance-v1.css?v=2" />
+    <link rel="stylesheet" href="/assets/legal-compliance-v1.css?v=3" />
   </head>
   <body class="legal-document-body">
     <header class="legal-topbar">

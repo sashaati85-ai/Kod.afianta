@@ -191,8 +191,13 @@
 
     var panel = consentPanel("questionnaire", false);
     panel.classList.add("legal-questionnaire-consent");
-    var target = action.parentElement || action;
-    target.parentElement.insertBefore(panel, target);
+    var helper = document.querySelector(".form-card .form-helper-text");
+    if (helper && helper.parentElement) {
+      helper.insertAdjacentElement("afterend", panel);
+    } else {
+      var target = action.parentElement || action;
+      target.parentElement.insertBefore(panel, target);
+    }
     var checkbox = panel.querySelector("[data-legal-personal]");
     setQuestionnaireActionState(action, false);
     checkbox.addEventListener("change", function () {
