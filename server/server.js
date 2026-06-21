@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { LEGAL_VERSION, DOCUMENTS, renderLegalDocument } = require("./legal-documents");
 
 const PORT = Number(process.env.PORT || 3000);
 const SITE_DIR = process.env.SITE_DIR || path.join(__dirname, "site");
@@ -11,6 +12,7 @@ const PAID_AI_MODEL = process.env.PAID_AI_MODEL || process.env.AI_MODEL || "goog
 const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1").replace(/\/$/, "");
 const PAID_REPORT_STORE = process.env.PAID_REPORT_STORE || path.join(__dirname, "paid-reports.json");
 const PAYMENT_STORE = process.env.PAYMENT_STORE || path.join(__dirname, "payments.json");
+const CONSENT_STORE = process.env.CONSENT_STORE || path.join(__dirname, "consents.jsonl");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || "";
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || "";
@@ -18,10 +20,14 @@ const YOOKASSA_API_URL = (process.env.YOOKASSA_API_URL || "https://api.yookassa.
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://kod.afianta.ru").replace(/\/$/, "");
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
+const REPORT_RETENTION_DAYS = Math.max(30, Number(process.env.REPORT_RETENTION_DAYS || 180));
+const CONSENT_RETENTION_DAYS = Math.max(365, Number(process.env.CONSENT_RETENTION_DAYS || 1095));
 const reportCache = new Map();
 const paidReportCache = new Map();
 const paymentCache = new Map();
+const consentCache = new Map();
 const paidReportInFlight = new Map();
+const rateLimitCache = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -105,8 +111,19 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
+    ...securityHeaders(),
   });
   res.end(body);
+}
+
+function securityHeaders() {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+  };
 }
 
 function readBody(req) {
@@ -209,6 +226,148 @@ function timingSafeEqualText(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function timingSafeEqualExact(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function requestIp(req) {
+  const forwarded = clampText(req.headers["x-forwarded-for"], 300);
+  if (forwarded) {
+    const chain = forwarded.split(",").map((item) => item.trim()).filter(Boolean);
+    if (chain.length) return chain[chain.length - 1];
+  }
+  return clampText(req.socket && req.socket.remoteAddress, 120);
+}
+
+function allowRequest(req, bucket, limit, windowMs = 60000) {
+  const now = Date.now();
+  const key = `${bucket}:${requestIp(req) || "unknown"}`;
+  const current = rateLimitCache.get(key);
+  if (!current || current.resetAt <= now) {
+    rateLimitCache.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  current.count += 1;
+  return current.count <= limit;
+}
+
+function requireRateLimit(req, res, bucket, limit) {
+  if (allowRequest(req, bucket, limit)) return true;
+  sendJson(res, 429, { error: "Too many requests" });
+  return false;
+}
+
+function isOlderThan(value, days) {
+  const timestamp = Date.parse(value || "");
+  return Number.isFinite(timestamp) && Date.now() - timestamp > days * 86400000;
+}
+
+function loadConsentStore() {
+  try {
+    if (!fs.existsSync(CONSENT_STORE)) return;
+    const lines = fs.readFileSync(CONSENT_STORE, "utf8").split(/\r?\n/).filter(Boolean);
+    const retained = [];
+    for (const line of lines) {
+      const record = JSON.parse(line);
+      if (!record || !record.consentId || isOlderThan(record.receivedAt, CONSENT_RETENTION_DAYS)) continue;
+      consentCache.set(record.consentId, record);
+      retained.push(JSON.stringify(record));
+    }
+    if (retained.length !== lines.length) {
+      fs.writeFileSync(CONSENT_STORE, retained.length ? `${retained.join("\n")}\n` : "", {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
+  } catch (error) {
+    console.error("[consent-store] load failed", error.message);
+  }
+}
+
+function appendConsentRecord(record) {
+  fs.mkdirSync(path.dirname(CONSENT_STORE), { recursive: true });
+  fs.appendFileSync(CONSENT_STORE, `${JSON.stringify(record)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  try {
+    fs.chmodSync(CONSENT_STORE, 0o600);
+  } catch (_) {}
+  consentCache.set(record.consentId, record);
+}
+
+function consentAccepts(consentId, type) {
+  const record = consentCache.get(consentId);
+  return Boolean(
+    record &&
+    Array.isArray(record.documents) &&
+    record.documents.some((document) => document.type === type && document.accepted === true)
+  );
+}
+
+async function handleConsent(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  const body = await readJson(req);
+  const consentId = clampText(body.consentId, 120);
+  const formId = clampText(body.formId, 80);
+  const page = clampText(body.page, 160);
+  const occurredAt = clampText(body.occurredAt, 80);
+  const version = clampText(body.version, 40);
+  const allowedTypes = new Set(["personal_data", "marketing", "offer", "cookies"]);
+  const documents = Array.isArray(body.documents)
+    ? body.documents.slice(0, 6).map((document) => ({
+        type: clampText(document && document.type, 40),
+        version: clampText(document && document.version, 40),
+        accepted: Boolean(document && document.accepted),
+        textId: clampText(document && document.textId, 80),
+      })).filter((document) => allowedTypes.has(document.type))
+    : [];
+
+  if (
+    !consentId ||
+    !formId ||
+    !page ||
+    version !== LEGAL_VERSION ||
+    !documents.length ||
+    documents.some((document) => document.version !== LEGAL_VERSION)
+  ) {
+    sendJson(res, 400, { error: "Invalid consent record" });
+    return;
+  }
+
+  if (!consentCache.has(consentId)) {
+    appendConsentRecord({
+      consentId,
+      occurredAt: Date.parse(occurredAt) ? occurredAt : new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      version,
+      page,
+      formId,
+      documents,
+      ip: requestIp(req),
+      userAgent: clampText(req.headers["user-agent"], 500),
+    });
+  }
+  sendJson(res, 201, { recorded: true, consentId, version: LEGAL_VERSION });
+}
+
+function handleAdminSession(req, res) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!ADMIN_BASIC_AUTH || !timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH)) {
+    sendJson(res, 401, { error: "Unauthorized" });
+    return;
+  }
+  sendJson(res, 200, { authenticated: true });
+}
+
 async function yookassaRequest(pathname, options = {}) {
   if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) {
     throw new Error("YooKassa is not configured");
@@ -252,11 +411,15 @@ function loadPaidReportStore() {
     if (!fs.existsSync(PAID_REPORT_STORE)) return;
     const parsed = JSON.parse(fs.readFileSync(PAID_REPORT_STORE, "utf8"));
     if (!parsed || typeof parsed !== "object") return;
+    let changed = false;
     Object.entries(parsed).forEach(([key, value]) => {
-      if (key && value && typeof value === "object") {
+      if (key && value && typeof value === "object" && !isOlderThan(value.createdAt, REPORT_RETENTION_DAYS)) {
         paidReportCache.set(key, value);
+      } else {
+        changed = true;
       }
     });
+    if (changed) savePaidReportStore();
   } catch (error) {
     console.error("[paid-report-store] load failed", error.message);
   }
@@ -277,9 +440,21 @@ function loadPaymentStore() {
     if (!fs.existsSync(PAYMENT_STORE)) return;
     const parsed = JSON.parse(fs.readFileSync(PAYMENT_STORE, "utf8"));
     if (!parsed || typeof parsed !== "object") return;
+    let changed = false;
     Object.entries(parsed).forEach(([key, value]) => {
-      if (key && value && typeof value === "object") paymentCache.set(key, value);
+      if (!key || !value || typeof value !== "object") return;
+      const contextDate = value.contextAttachedAt || value.createdAt;
+      if (isOlderThan(contextDate, REPORT_RETENTION_DAYS)) {
+        delete value.answers;
+        delete value.result;
+        delete value.contextHash;
+        delete value.accessToken;
+        value.contextDeletedAt = value.contextDeletedAt || new Date().toISOString();
+        changed = true;
+      }
+      paymentCache.set(key, value);
     });
+    if (changed) savePaymentStore();
   } catch (error) {
     console.error("[payment-store] load failed", error.message);
   }
@@ -920,8 +1095,21 @@ function buildPaidUserPrompt(context) {
   ].join("\n\n");
 }
 
+function buildAiProviderContext(context) {
+  const safeContext = { ...context };
+  delete safeContext.name;
+  delete safeContext.birthDate;
+  delete safeContext.contextNote;
+  safeContext.dataMinimization = {
+    directIdentifiersRemoved: true,
+    freeTextRemoved: true,
+  };
+  return safeContext;
+}
+
 async function callPaidAi(context) {
   if (!AI_API_KEY) throw new Error("AI_API_KEY is not configured");
+  const providerContext = buildAiProviderContext(context);
 
   const response = await fetch(`${AI_API_BASE_URL}/chat/completions`, {
     method: "POST",
@@ -933,7 +1121,7 @@ async function callPaidAi(context) {
       model: PAID_AI_MODEL,
       messages: [
         { role: "system", content: buildPaidSystemPrompt() },
-        { role: "user", content: buildPaidUserPrompt(context) },
+        { role: "user", content: buildPaidUserPrompt(providerContext) },
       ],
       temperature: 0.35,
       max_tokens: 7000,
@@ -1084,6 +1272,14 @@ async function handleGenerateFreeReport(req, res) {
 
   try {
     const body = await readJson(req);
+    const legalConsent = body.legalConsent && typeof body.legalConsent === "object" ? body.legalConsent : {};
+    if (
+      legalConsent.version !== LEGAL_VERSION ||
+      !consentAccepts(clampText(legalConsent.personalDataConsentId, 120), "personal_data")
+    ) {
+      sendJson(res, 400, { error: "Required personal data consent is missing" });
+      return;
+    }
     const context = validateContext(body.context);
     if (!context || !context.lifePathNumber || !context.detectedCycle) {
       sendJson(res, 400, { error: "Invalid report context" });
@@ -1119,7 +1315,7 @@ async function handleProductSettings(req, res) {
   }
 
   if (req.method === "POST") {
-    if (ADMIN_BASIC_AUTH && req.headers.authorization !== ADMIN_BASIC_AUTH) {
+    if (!ADMIN_BASIC_AUTH || !timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH)) {
       sendJson(res, 401, { error: "Unauthorized" });
       return;
     }
@@ -1244,8 +1440,19 @@ async function handleCreateYookassaPayment(req, res) {
   const body = await readJson(req);
   const answers = body.answers && typeof body.answers === "object" ? body.answers : {};
   const result = body.resultSnapshot && typeof body.resultSnapshot === "object" ? body.resultSnapshot : {};
+  const legalConsent = body.legalConsent && typeof body.legalConsent === "object" ? body.legalConsent : {};
+  const personalDataConsentId = clampText(legalConsent.personalDataConsentId, 120);
+  const offerConsentId = clampText(legalConsent.offerConsentId, 120);
   if (!Object.keys(answers).length || !Object.keys(result).length) {
     sendJson(res, 400, { error: "Invalid payment context" });
+    return;
+  }
+  if (
+    legalConsent.version !== LEGAL_VERSION ||
+    !consentAccepts(personalDataConsentId, "personal_data") ||
+    !consentAccepts(offerConsentId, "offer")
+  ) {
+    sendJson(res, 400, { error: "Required legal consents are missing" });
     return;
   }
 
@@ -1285,6 +1492,11 @@ async function handleCreateYookassaPayment(req, res) {
     answers,
     result,
     contextHash: stableHash({ answers, result }),
+    legalConsent: {
+      personalDataConsentId,
+      offerConsentId,
+      version: LEGAL_VERSION,
+    },
     createdAt: new Date().toISOString(),
   });
   savePaymentStore();
@@ -1382,7 +1594,10 @@ function serveStatic(req, res) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
   const candidate = path.normalize(path.join(SITE_DIR, pathname));
-  const safePath = candidate.startsWith(SITE_DIR) ? candidate : path.join(SITE_DIR, "index.html");
+  const relative = path.relative(SITE_DIR, candidate);
+  const safePath = relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+    ? candidate
+    : path.join(SITE_DIR, "index.html");
 
   fs.stat(safePath, (statError, stat) => {
     const filePath = !statError && stat.isFile() ? safePath : path.join(SITE_DIR, "index.html");
@@ -1390,6 +1605,7 @@ function serveStatic(req, res) {
     const headers = {
       "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
       "Cache-Control": filePath.endsWith("index.html") ? "no-store, no-cache, must-revalidate" : "public, immutable, max-age=2592000",
+      ...securityHeaders(),
     };
     res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
@@ -1399,11 +1615,34 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
+    const legalPath = url.pathname.replace(/\/+$/, "") || "/";
+    if (DOCUMENTS[legalPath]) {
+      const html = renderLegalDocument(legalPath, { priceRub: PRODUCT_PRICE_RUB });
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        ...securityHeaders(),
+      });
+      res.end(html);
+      return;
+    }
+    if (url.pathname === "/api/consents") {
+      if (!requireRateLimit(req, res, "consents", 30)) return;
+      await handleConsent(req, res);
+      return;
+    }
+    if (url.pathname === "/api/admin-session") {
+      if (!requireRateLimit(req, res, "admin-session", 10)) return;
+      handleAdminSession(req, res);
+      return;
+    }
     if (url.pathname === "/api/generate-free-report") {
+      if (!requireRateLimit(req, res, "free-report", 20)) return;
       await handleGenerateFreeReport(req, res);
       return;
     }
     if (url.pathname === "/api/generate-paid-report") {
+      if (!requireRateLimit(req, res, "paid-report", 10)) return;
       await handleGeneratePaidReport(req, res);
       return;
     }
@@ -1412,6 +1651,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/create-payment") {
+      if (!requireRateLimit(req, res, "create-payment", 10)) return;
       await handleCreateYookassaPayment(req, res);
       return;
     }
@@ -1440,6 +1680,7 @@ const server = http.createServer(async (req, res) => {
 
 loadPaidReportStore();
 loadPaymentStore();
+loadConsentStore();
 
 server.listen(PORT, () => {
   console.log(`KOD site server listening on ${PORT}`);

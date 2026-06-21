@@ -3,3 +3,6 @@ dist/
 .DS_Store
 Thumbs.db
 .previous-project-backup-path
+*.log
+screenshots/
+.admin-credentials.local.txt

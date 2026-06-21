@@ -2,6 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 COPY server/server.js /app/server.js
+COPY server/legal-documents.js /app/legal-documents.js
 COPY index.html /app/site/index.html
 COPY assets /app/site/assets
 COPY .nojekyll /app/site/.nojekyll

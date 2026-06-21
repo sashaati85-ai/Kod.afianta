@@ -23,6 +23,14 @@
     var current = read(sessionStorage, FLOW_KEY);
     if (current && current.answers && current.result) return;
     var backup = read(localStorage, FLOW_BACKUP_KEY);
+    if (
+      backup &&
+      backup.savedAt &&
+      Date.now() - Date.parse(backup.savedAt) > 30 * 24 * 60 * 60 * 1000
+    ) {
+      localStorage.removeItem(FLOW_BACKUP_KEY);
+      return;
+    }
     if (backup && backup.answers && backup.result) write(sessionStorage, FLOW_KEY, backup);
   }
 
@@ -54,7 +62,11 @@
 
   function mirrorFlow() {
     var state = read(sessionStorage, FLOW_KEY);
-    if (state && state.answers) write(localStorage, FLOW_BACKUP_KEY, state);
+    if (state && state.answers) {
+      write(localStorage, FLOW_BACKUP_KEY, Object.assign({}, state, {
+        savedAt: new Date().toISOString()
+      }));
+    }
   }
 
   function restorePaymentStatus() {
