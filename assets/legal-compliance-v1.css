@@ -216,6 +216,22 @@ body:has(.page-footer) .site-legal-footer {
   padding-bottom: 170px;
 }
 
+.page-footer .legal-questionnaire-consent {
+  width: min(100%, 720px);
+  max-width: 720px;
+  margin: 0 auto 14px;
+}
+
+.page-footer button.legal-action-disabled,
+.page-footer button.legal-action-disabled:hover,
+.page-footer button.legal-action-disabled:active {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: saturate(0.42) brightness(1.08);
+  box-shadow: none;
+  transform: none;
+}
+
 .legal-consent-panel,
 .legal-payment-summary,
 .legal-sensitive-note,
@@ -407,6 +423,17 @@ body:has(.page-footer) .site-legal-footer {
 
   body:has(.page-footer) .site-legal-footer {
     padding-bottom: 190px;
+  }
+
+  .page-footer .legal-questionnaire-consent {
+    width: 100%;
+    margin: 0 auto 12px;
+    padding: 16px;
+  }
+
+  .page-footer .legal-questionnaire-consent .legal-consent-copy {
+    font-size: 12.5px;
+    line-height: 1.5;
   }
 
   .legal-disclaimer {

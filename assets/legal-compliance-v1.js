@@ -164,18 +164,41 @@
     }) || null;
   }
 
+  function setQuestionnaireActionState(action, enabled) {
+    if (!action) return;
+    action.disabled = !enabled;
+    action.setAttribute("aria-disabled", enabled ? "false" : "true");
+    action.classList.toggle("legal-action-disabled", !enabled);
+  }
+
   function installQuestionnaireConsent() {
     if (window.location.pathname.replace(/\/$/, "") !== "/questionnaire") return;
     var action = findActionButton(["продолжить", "сформировать отчёт"]);
     if (!action) return;
 
     var state = readConsentState();
-    if (state.personal_data && state.personal_data.version === VERSION) return;
-    if (document.querySelector('[data-legal-panel="questionnaire"]')) return;
+    var existingPanel = document.querySelector('[data-legal-panel="questionnaire"]');
+    if (state.personal_data && state.personal_data.version === VERSION) {
+      if (existingPanel) existingPanel.remove();
+      setQuestionnaireActionState(action, true);
+      return;
+    }
+    if (existingPanel) {
+      var existingCheckbox = existingPanel.querySelector("[data-legal-personal]");
+      setQuestionnaireActionState(action, Boolean(existingCheckbox && existingCheckbox.checked));
+      return;
+    }
 
     var panel = consentPanel("questionnaire", false);
+    panel.classList.add("legal-questionnaire-consent");
     var target = action.parentElement || action;
     target.parentElement.insertBefore(panel, target);
+    var checkbox = panel.querySelector("[data-legal-personal]");
+    setQuestionnaireActionState(action, false);
+    checkbox.addEventListener("change", function () {
+      panel.classList.remove("has-error");
+      setQuestionnaireActionState(action, checkbox.checked);
+    });
   }
 
   function installSensitiveFieldWarning() {
@@ -277,7 +300,13 @@
   }
 
   function installFooter() {
-    if (document.querySelector(".site-legal-footer")) return;
+    var path = window.location.pathname.replace(/\/$/, "");
+    var existing = document.querySelector(".site-legal-footer");
+    if (path === "/questionnaire") {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
     var footer = document.createElement("footer");
     footer.className = "site-legal-footer";
     footer.innerHTML =
@@ -347,12 +376,16 @@
       return true;
     }
     panel.classList.remove("has-error");
+    setQuestionnaireActionState(button, false);
     recordConsent("questionnaire", [
       { type: "personal_data", accepted: true, textId: "personal-data-consent" }
     ]).then(function () {
+      panel.remove();
+      setQuestionnaireActionState(button, true);
       bypassClick = button;
       button.click();
     }).catch(function () {
+      setQuestionnaireActionState(button, true);
       showPanelError(panel, "Не удалось зафиксировать согласие. Проверьте соединение и попробуйте ещё раз.");
     });
     return true;
