@@ -264,7 +264,11 @@ function adminAuthMatchesFallback(req) {
 }
 
 function verifyAdminRequest(req) {
-  return adminAuthMatchesSaved(req) || adminAuthMatchesFallback(req);
+  const adminAuth = getSiteSettings().adminAuth;
+  if (adminAuth.username && adminAuth.passwordHash && adminAuth.passwordSalt) {
+    return adminAuthMatchesSaved(req);
+  }
+  return adminAuthMatchesFallback(req);
 }
 
 function normalizeSiteSettings(value = {}) {
