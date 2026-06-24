@@ -13,6 +13,7 @@ const AI_API_BASE_URL = (process.env.AI_API_BASE_URL || "https://polza.ai/api/v1
 const PAID_REPORT_STORE = process.env.PAID_REPORT_STORE || path.join(__dirname, "paid-reports.json");
 const PAYMENT_STORE = process.env.PAYMENT_STORE || path.join(__dirname, "payments.json");
 const CONSENT_STORE = process.env.CONSENT_STORE || path.join(__dirname, "consents.jsonl");
+const SETTINGS_STORE = process.env.SETTINGS_STORE || path.join(path.dirname(CONSENT_STORE), "site-settings.json");
 const PRODUCT_PRICE_RUB = Number(process.env.PRODUCT_PRICE_RUB || 490);
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || "";
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || "";
@@ -30,6 +31,7 @@ const paymentCache = new Map();
 const consentCache = new Map();
 const paidReportInFlight = new Map();
 const rateLimitCache = new Map();
+let siteSettings = null;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -66,6 +68,14 @@ const FALLBACK_TEASER_ITEMS = [
   "Что сейчас лучше не делать, чтобы не ухудшить контакт",
   "Какой следующий шаг поможет вернуть больше ясности",
 ];
+
+const DEFAULT_SITE_SETTINGS = {
+  contactLinks: {
+    telegram: CONTACT_TELEGRAM_URL,
+    vk: CONTACT_VK_URL,
+  },
+  legalDocuments: {},
+};
 
 const THREE_TO_SIX_DISTANCE_PHRASE = "Тема отдаления уже перестала выглядеть как случайный эпизод и начала влиять на ваше внутреннее состояние";
 
@@ -152,7 +162,7 @@ function readBody(req) {
 }
 
 async function readJson(req) {
-  const body = await readBody(req);
+  const body = (await readBody(req)).replace(/^\uFEFF/, "");
   if (!body.trim()) return {};
   return JSON.parse(body);
 }
@@ -160,6 +170,101 @@ async function readJson(req) {
 function clampText(value, maxLength) {
   if (typeof value !== "string") return "";
   return value.trim().replace(/\s+\n/g, "\n").replace(/[ \t]{2,}/g, " ").slice(0, maxLength);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function normalizeUrl(value, fallback) {
+  const url = clampText(value, 500);
+  if (!url) return fallback;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return fallback;
+    return parsed.toString();
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeLegalDocuments(value) {
+  if (!value || typeof value !== "object") return {};
+  return Object.keys(DOCUMENTS).reduce((result, pathname) => {
+    const document = value[pathname];
+    if (!document || typeof document !== "object") return result;
+    const title = clampText(document.title, 180);
+    const lead = clampText(document.lead, 1200);
+    const content = clampText(document.content, 80000);
+    if (title || lead || content) {
+      result[pathname] = { title, lead, content };
+    }
+    return result;
+  }, {});
+}
+
+function normalizeSiteSettings(value = {}) {
+  const contactLinks = value.contactLinks && typeof value.contactLinks === "object"
+    ? value.contactLinks
+    : {};
+  return {
+    contactLinks: {
+      telegram: normalizeUrl(contactLinks.telegram, DEFAULT_SITE_SETTINGS.contactLinks.telegram),
+      vk: normalizeUrl(contactLinks.vk, DEFAULT_SITE_SETTINGS.contactLinks.vk),
+    },
+    legalDocuments: normalizeLegalDocuments(value.legalDocuments),
+    updatedAt: clampText(value.updatedAt, 80) || "",
+  };
+}
+
+function getSiteSettings() {
+  if (!siteSettings) siteSettings = normalizeSiteSettings(DEFAULT_SITE_SETTINGS);
+  return siteSettings;
+}
+
+function loadSiteSettings() {
+  try {
+    if (!fs.existsSync(SETTINGS_STORE)) {
+      siteSettings = normalizeSiteSettings(DEFAULT_SITE_SETTINGS);
+      return;
+    }
+    const parsed = JSON.parse(fs.readFileSync(SETTINGS_STORE, "utf8"));
+    siteSettings = normalizeSiteSettings(parsed);
+  } catch (error) {
+    console.warn("[settings] failed to load settings", error.message);
+    siteSettings = normalizeSiteSettings(DEFAULT_SITE_SETTINGS);
+  }
+}
+
+function saveSiteSettings() {
+  fs.mkdirSync(path.dirname(SETTINGS_STORE), { recursive: true });
+  fs.writeFileSync(SETTINGS_STORE, JSON.stringify(getSiteSettings(), null, 2), "utf8");
+}
+
+function adminSettingsPayload() {
+  const settings = getSiteSettings();
+  const legalDocuments = Object.keys(DOCUMENTS).reduce((result, pathname) => {
+    const base = DOCUMENTS[pathname](PRODUCT_PRICE_RUB);
+    result[pathname] = {
+      title: base.title || "",
+      lead: base.lead || "",
+      content: base.content || "",
+      ...(settings.legalDocuments[pathname] || {}),
+    };
+    return result;
+  }, {});
+  return {
+    settings: {
+      contactLinks: settings.contactLinks,
+      legalDocuments,
+      updatedAt: settings.updatedAt || "",
+    },
+    documentPaths: Object.keys(DOCUMENTS),
+  };
 }
 
 function normalizeAiReport(input) {
@@ -376,6 +481,44 @@ function handleAdminSession(req, res) {
     return;
   }
   sendJson(res, 200, { authenticated: true });
+}
+
+function requireAdmin(req, res) {
+  if (!ADMIN_BASIC_AUTH) {
+    sendJson(res, 503, { error: "Admin auth is not configured" });
+    return false;
+  }
+  if (!timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH)) {
+    res.writeHead(401, {
+      "WWW-Authenticate": 'Basic realm="KOD Admin", charset="UTF-8"',
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      ...securityHeaders(),
+    });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
+    return false;
+  }
+  return true;
+}
+
+async function handleAdminSettings(req, res) {
+  if (!requireAdmin(req, res)) return;
+  if (req.method === "GET") {
+    sendJson(res, 200, adminSettingsPayload());
+    return;
+  }
+  if (req.method === "POST") {
+    const body = await readJson(req);
+    siteSettings = normalizeSiteSettings({
+      contactLinks: body.contactLinks,
+      legalDocuments: body.legalDocuments,
+      updatedAt: new Date().toISOString(),
+    });
+    saveSiteSettings();
+    sendJson(res, 200, { saved: true, ...adminSettingsPayload() });
+    return;
+  }
+  sendJson(res, 405, { error: "Method not allowed" });
 }
 
 async function yookassaRequest(pathname, options = {}) {
@@ -1623,6 +1766,9 @@ function serveStatic(req, res) {
 }
 
 function renderLeadContactPage() {
+  const settings = getSiteSettings();
+  const telegramUrl = escapeHtml(settings.contactLinks.telegram);
+  const vkUrl = escapeHtml(settings.contactLinks.vk);
   return `<!doctype html>
 <html lang="ru">
   <head>
@@ -1649,11 +1795,11 @@ function renderLeadContactPage() {
             <p>Выберите удобный способ связи. Мы получим ваше сообщение и вернёмся с ответом, чтобы согласовать бесплатную диагностику отношений.</p>
           </div>
           <div class="final-contact-actions" aria-label="Способы связи">
-            <a class="final-contact-button final-contact-button-telegram" href="${CONTACT_TELEGRAM_URL}" target="_blank" rel="noopener">
+            <a class="final-contact-button final-contact-button-telegram" href="${telegramUrl}" target="_blank" rel="noopener">
               <span class="final-contact-button-icon">TG</span>
               <span><strong>Telegram</strong><small>Оставить заявку в Telegram</small></span>
             </a>
-            <a class="final-contact-button final-contact-button-vk" href="${CONTACT_VK_URL}" target="_blank" rel="noopener">
+            <a class="final-contact-button final-contact-button-vk" href="${vkUrl}" target="_blank" rel="noopener">
               <span class="final-contact-button-icon">VK</span>
               <span><strong>ВКонтакте</strong><small>Оставить заявку в VK</small></span>
             </a>
@@ -1662,6 +1808,190 @@ function renderLeadContactPage() {
         </section>
       </main>
     </div>
+  </body>
+</html>`;
+}
+
+function renderAdminPage() {
+  const settingsJson = JSON.stringify(getSiteSettings()).replace(/</g, "\\u003c");
+  const documentPathsJson = JSON.stringify(Object.keys(DOCUMENTS)).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Админ-панель — Код отношений</title>
+    <style>
+      :root{--ink:#342219;--muted:#755f50;--gold:#b98a47;--line:rgba(185,138,71,.24);--paper:#fffdf8;--bg:#fbf7ef}
+      *{box-sizing:border-box}body{margin:0;color:var(--ink);background:radial-gradient(circle at 12% 0,rgba(222,188,132,.18),transparent 34%),var(--bg);font-family:Inter,Arial,sans-serif}
+      .admin-shell{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:32px 0 52px}
+      .admin-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}
+      .admin-kicker{margin:0 0 8px;color:var(--gold);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+      h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,5vw,58px);line-height:1}
+      .admin-card{padding:24px;border:1px solid var(--line);border-radius:24px;background:rgba(255,253,248,.94);box-shadow:0 20px 60px rgba(80,52,29,.08)}
+      .admin-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px;align-items:start}
+      .admin-stack{display:grid;gap:16px}.admin-card h2{margin:0 0 14px;font-family:Georgia,"Times New Roman",serif;font-size:26px}
+      label{display:grid;gap:8px;color:var(--muted);font-size:13px;font-weight:700}
+      input,textarea,select{width:100%;border:1px solid rgba(70,45,28,.16);border-radius:14px;background:#fff;color:var(--ink);font:inherit;font-size:15px;line-height:1.45;padding:12px 14px;outline:none}
+      textarea{min-height:340px;resize:vertical;font-family:Consolas,"Courier New",monospace;font-size:13px}
+      input:focus,textarea:focus,select:focus{border-color:rgba(185,138,71,.55);box-shadow:0 0 0 4px rgba(185,138,71,.12)}
+      .doc-tabs{display:grid;gap:8px}.doc-tab{width:100%;min-height:42px;border:1px solid var(--line);border-radius:13px;background:#fffaf1;color:var(--ink);font:inherit;font-weight:700;text-align:left;padding:9px 12px;cursor:pointer}
+      .doc-tab.is-active{background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;border-color:transparent}
+      .admin-actions{position:sticky;bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:18px;background:rgba(255,253,248,.94);backdrop-filter:blur(14px)}
+      .admin-save{min-height:46px;border:0;border-radius:15px;background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;font:inherit;font-weight:800;padding:0 22px;cursor:pointer;box-shadow:0 12px 28px rgba(110,72,34,.18)}
+      .admin-status{color:var(--muted);font-size:14px}.admin-help{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.55}.admin-preview-link{color:#765326;text-underline-offset:3px}
+      @media(max-width:800px){.admin-shell{width:min(100% - 20px,1180px);padding-top:18px}.admin-grid{grid-template-columns:1fr}.admin-top{display:grid}.admin-actions{position:static;display:grid}.admin-save{width:100%}}
+    </style>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-top">
+        <div>
+          <p class="admin-kicker">KOD Admin</p>
+          <h1>Админ-панель</h1>
+        </div>
+        <a class="admin-preview-link" href="/" target="_blank" rel="noopener">Открыть сайт</a>
+      </header>
+      <div class="admin-grid">
+        <aside class="admin-stack">
+          <section class="admin-card">
+            <h2>Кнопки заявки</h2>
+            <label>Telegram
+              <input id="telegram" type="url" placeholder="https://t.me/..." />
+            </label>
+            <br />
+            <label>ВКонтакте
+              <input id="vk" type="url" placeholder="https://vk.com/..." />
+            </label>
+            <p class="admin-help">Эти ссылки используются на финальной странице заявки: <a href="/lead" target="_blank" rel="noopener">/lead</a>.</p>
+          </section>
+          <section class="admin-card">
+            <h2>Документы</h2>
+            <div class="doc-tabs" id="docTabs"></div>
+            <p class="admin-help">HTML-содержимое можно редактировать вручную. Например: &lt;p&gt;Текст&lt;/p&gt;, &lt;ul&gt;&lt;li&gt;Пункт&lt;/li&gt;&lt;/ul&gt;.</p>
+          </section>
+        </aside>
+        <section class="admin-card">
+          <h2 id="docHeading">Документ</h2>
+          <div class="admin-stack">
+            <label>Заголовок
+              <input id="docTitle" type="text" />
+            </label>
+            <label>Описание под заголовком
+              <textarea id="docLead" style="min-height:110px;font-family:inherit;font-size:15px"></textarea>
+            </label>
+            <label>HTML-содержимое документа
+              <textarea id="docContent"></textarea>
+            </label>
+          </div>
+        </section>
+      </div>
+      <div class="admin-actions">
+        <span class="admin-status" id="status">Изменения ещё не сохранялись.</span>
+        <button class="admin-save" id="saveButton" type="button">Сохранить изменения</button>
+      </div>
+    </main>
+    <script>
+      window.__KOD_ADMIN_INITIAL__ = ${settingsJson};
+      window.__KOD_ADMIN_DOC_PATHS__ = ${documentPathsJson};
+    </script>
+    <script>
+      (function(){
+        var settings = JSON.parse(JSON.stringify(window.__KOD_ADMIN_INITIAL__ || {}));
+        var paths = window.__KOD_ADMIN_DOC_PATHS__ || [];
+        var labels = {
+          "/privacy": "Политика",
+          "/personal-data-consent": "Персональные данные",
+          "/marketing-consent": "Рассылка",
+          "/cookies": "Cookies",
+          "/contacts": "Контакты"
+        };
+        var activePath = paths[0] || "/privacy";
+        var telegram = document.getElementById("telegram");
+        var vk = document.getElementById("vk");
+        var docTabs = document.getElementById("docTabs");
+        var docHeading = document.getElementById("docHeading");
+        var docTitle = document.getElementById("docTitle");
+        var docLead = document.getElementById("docLead");
+        var docContent = document.getElementById("docContent");
+        var status = document.getElementById("status");
+        var saveButton = document.getElementById("saveButton");
+
+        function ensureDoc(path){
+          settings.legalDocuments = settings.legalDocuments || {};
+          settings.legalDocuments[path] = settings.legalDocuments[path] || { title:"", lead:"", content:"" };
+          return settings.legalDocuments[path];
+        }
+        function persistActive(){
+          var doc = ensureDoc(activePath);
+          doc.title = docTitle.value;
+          doc.lead = docLead.value;
+          doc.content = docContent.value;
+        }
+        function renderTabs(){
+          docTabs.innerHTML = "";
+          paths.forEach(function(path){
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "doc-tab" + (path === activePath ? " is-active" : "");
+            button.textContent = labels[path] || path;
+            button.addEventListener("click", function(){
+              persistActive();
+              activePath = path;
+              renderDocument();
+              renderTabs();
+            });
+            docTabs.appendChild(button);
+          });
+        }
+        function renderDocument(){
+          var doc = ensureDoc(activePath);
+          docHeading.textContent = labels[activePath] || activePath;
+          docTitle.value = doc.title || "";
+          docLead.value = doc.lead || "";
+          docContent.value = doc.content || "";
+        }
+        async function loadLatest(){
+          var response = await fetch("/api/admin-settings", { credentials: "same-origin" });
+          if (!response.ok) throw new Error("Не удалось загрузить настройки");
+          var payload = await response.json();
+          settings = payload.settings || settings;
+          paths = payload.documentPaths || paths;
+          telegram.value = settings.contactLinks && settings.contactLinks.telegram || "";
+          vk.value = settings.contactLinks && settings.contactLinks.vk || "";
+          renderTabs();
+          renderDocument();
+        }
+        saveButton.addEventListener("click", async function(){
+          persistActive();
+          settings.contactLinks = { telegram: telegram.value, vk: vk.value };
+          saveButton.disabled = true;
+          status.textContent = "Сохраняю...";
+          try {
+            var response = await fetch("/api/admin-settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify(settings)
+            });
+            if (!response.ok) throw new Error("Ошибка сохранения");
+            var payload = await response.json();
+            settings = payload.settings || settings;
+            status.textContent = "Сохранено: " + new Date().toLocaleString("ru-RU");
+          } catch (error) {
+            status.textContent = error.message || "Не удалось сохранить";
+          } finally {
+            saveButton.disabled = false;
+          }
+        });
+        telegram.value = settings.contactLinks && settings.contactLinks.telegram || "";
+        vk.value = settings.contactLinks && settings.contactLinks.vk || "";
+        renderTabs();
+        renderDocument();
+        loadLatest().catch(function(error){ status.textContent = error.message; });
+      })();
+    </script>
   </body>
 </html>`;
 }
@@ -1698,7 +2028,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (DOCUMENTS[legalPath]) {
-      const html = renderLegalDocument(legalPath, { priceRub: PRODUCT_PRICE_RUB });
+      const html = renderLegalDocument(legalPath, {
+        priceRub: PRODUCT_PRICE_RUB,
+        legalDocuments: getSiteSettings().legalDocuments,
+      });
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -1715,6 +2048,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/admin-session") {
       if (!requireRateLimit(req, res, "admin-session", 10)) return;
       handleAdminSession(req, res);
+      return;
+    }
+    if (url.pathname === "/api/admin-settings") {
+      if (!requireRateLimit(req, res, "admin-settings", 60)) return;
+      await handleAdminSettings(req, res);
       return;
     }
     if (url.pathname === "/api/generate-free-report") {
@@ -1750,6 +2088,16 @@ const server = http.createServer(async (req, res) => {
       sendPaidFlowDisabled(res);
       return;
     }
+    if (legalPath === "/admin") {
+      if (!requireAdmin(req, res)) return;
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        ...securityHeaders(),
+      });
+      res.end(renderAdminPage());
+      return;
+    }
     serveStatic(req, res);
   } catch (error) {
     console.error("[server]", error);
@@ -1760,6 +2108,7 @@ const server = http.createServer(async (req, res) => {
 loadPaidReportStore();
 loadPaymentStore();
 loadConsentStore();
+loadSiteSettings();
 
 server.listen(PORT, () => {
   console.log(`KOD site server listening on ${PORT}`);

@@ -285,7 +285,11 @@ const DOCUMENTS = {
 function renderLegalDocument(pathname, options = {}) {
   const factory = DOCUMENTS[pathname];
   if (!factory) return null;
-  const document = factory(options.priceRub);
+  const overrides = options.legalDocuments && options.legalDocuments[pathname];
+  const document = {
+    ...factory(options.priceRub),
+    ...(overrides && typeof overrides === "object" ? overrides : {}),
+  };
   const title = escapeHtml(document.title);
   return `<!doctype html>
 <html lang="ru">
