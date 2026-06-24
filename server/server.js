@@ -22,6 +22,7 @@ const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://kod.afianta.ru"
 const CONTACT_TELEGRAM_URL = process.env.CONTACT_TELEGRAM_URL || "https://t.me/afianta";
 const CONTACT_VK_URL = process.env.CONTACT_VK_URL || "https://vk.com/afianta";
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
+const ADMIN_PASSWORD_ITERATIONS = 120000;
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
 const REPORT_RETENTION_DAYS = Math.max(30, Number(process.env.REPORT_RETENTION_DAYS || 180));
 const CONSENT_RETENTION_DAYS = Math.max(365, Number(process.env.CONSENT_RETENTION_DAYS || 1095));
@@ -73,6 +74,12 @@ const DEFAULT_SITE_SETTINGS = {
   contactLinks: {
     telegram: CONTACT_TELEGRAM_URL,
     vk: CONTACT_VK_URL,
+  },
+  adminAuth: {
+    username: "",
+    passwordHash: "",
+    passwordSalt: "",
+    updatedAt: "",
   },
   legalDocuments: {},
 };
@@ -207,6 +214,59 @@ function normalizeLegalDocuments(value) {
   }, {});
 }
 
+function normalizeAdminAuth(value) {
+  if (!value || typeof value !== "object") return { ...DEFAULT_SITE_SETTINGS.adminAuth };
+  const username = clampText(value.username, 80);
+  const passwordHash = clampText(value.passwordHash, 160);
+  const passwordSalt = clampText(value.passwordSalt, 80);
+  return {
+    username,
+    passwordHash,
+    passwordSalt,
+    updatedAt: clampText(value.updatedAt, 80) || "",
+  };
+}
+
+function hashAdminPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const passwordHash = crypto
+    .pbkdf2Sync(String(password || ""), salt, ADMIN_PASSWORD_ITERATIONS, 32, "sha256")
+    .toString("hex");
+  return { passwordHash, passwordSalt: salt };
+}
+
+function parseBasicAuthHeader(header) {
+  const value = String(header || "");
+  if (!value.toLowerCase().startsWith("basic ")) return null;
+  try {
+    const decoded = Buffer.from(value.slice(6).trim(), "base64").toString("utf8");
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return null;
+    return {
+      username: decoded.slice(0, separator),
+      password: decoded.slice(separator + 1),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function adminAuthMatchesSaved(req) {
+  const credentials = parseBasicAuthHeader(req.headers.authorization);
+  const adminAuth = getSiteSettings().adminAuth;
+  if (!credentials || !adminAuth.username || !adminAuth.passwordHash || !adminAuth.passwordSalt) return false;
+  if (!timingSafeEqualExact(credentials.username, adminAuth.username)) return false;
+  const candidate = hashAdminPassword(credentials.password, adminAuth.passwordSalt).passwordHash;
+  return timingSafeEqualExact(candidate, adminAuth.passwordHash);
+}
+
+function adminAuthMatchesFallback(req) {
+  return Boolean(ADMIN_BASIC_AUTH && timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH));
+}
+
+function verifyAdminRequest(req) {
+  return adminAuthMatchesSaved(req) || adminAuthMatchesFallback(req);
+}
+
 function normalizeSiteSettings(value = {}) {
   const contactLinks = value.contactLinks && typeof value.contactLinks === "object"
     ? value.contactLinks
@@ -216,6 +276,7 @@ function normalizeSiteSettings(value = {}) {
       telegram: normalizeUrl(contactLinks.telegram, DEFAULT_SITE_SETTINGS.contactLinks.telegram),
       vk: normalizeUrl(contactLinks.vk, DEFAULT_SITE_SETTINGS.contactLinks.vk),
     },
+    adminAuth: normalizeAdminAuth(value.adminAuth),
     legalDocuments: normalizeLegalDocuments(value.legalDocuments),
     updatedAt: clampText(value.updatedAt, 80) || "",
   };
@@ -260,6 +321,11 @@ function adminSettingsPayload() {
   return {
     settings: {
       contactLinks: settings.contactLinks,
+      adminAuth: {
+        username: settings.adminAuth.username,
+        hasCustomAuth: Boolean(settings.adminAuth.username && settings.adminAuth.passwordHash),
+        updatedAt: settings.adminAuth.updatedAt || "",
+      },
       legalDocuments,
       updatedAt: settings.updatedAt || "",
     },
@@ -476,7 +542,7 @@ function handleAdminSession(req, res) {
     sendJson(res, 405, { error: "Method not allowed" });
     return;
   }
-  if (!ADMIN_BASIC_AUTH || !timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH)) {
+  if (!verifyAdminRequest(req)) {
     sendJson(res, 401, { error: "Unauthorized" });
     return;
   }
@@ -484,11 +550,12 @@ function handleAdminSession(req, res) {
 }
 
 function requireAdmin(req, res) {
-  if (!ADMIN_BASIC_AUTH) {
+  const hasSavedAuth = Boolean(getSiteSettings().adminAuth.username && getSiteSettings().adminAuth.passwordHash);
+  if (!ADMIN_BASIC_AUTH && !hasSavedAuth) {
     sendJson(res, 503, { error: "Admin auth is not configured" });
     return false;
   }
-  if (!timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH)) {
+  if (!verifyAdminRequest(req)) {
     res.writeHead(401, {
       "WWW-Authenticate": 'Basic realm="KOD Admin", charset="UTF-8"',
       "Content-Type": "application/json; charset=utf-8",
@@ -509,8 +576,32 @@ async function handleAdminSettings(req, res) {
   }
   if (req.method === "POST") {
     const body = await readJson(req);
+    const previous = getSiteSettings();
+    const incomingAdminAuth = body.adminAuth && typeof body.adminAuth === "object" ? body.adminAuth : {};
+    const adminUsername = clampText(incomingAdminAuth.username, 80) || previous.adminAuth.username;
+    const newPassword = typeof incomingAdminAuth.newPassword === "string" ? incomingAdminAuth.newPassword.trim() : "";
+    let adminAuth = previous.adminAuth;
+    if (newPassword || adminUsername !== previous.adminAuth.username) {
+      if (!adminUsername || (newPassword && newPassword.length < 8)) {
+        sendJson(res, 400, { error: "Admin credentials are invalid" });
+        return;
+      }
+      if (!newPassword && !previous.adminAuth.passwordHash) {
+        sendJson(res, 400, { error: "Admin password is required" });
+        return;
+      }
+      adminAuth = {
+        username: adminUsername,
+        ...(newPassword ? hashAdminPassword(newPassword) : {
+          passwordHash: previous.adminAuth.passwordHash,
+          passwordSalt: previous.adminAuth.passwordSalt,
+        }),
+        updatedAt: new Date().toISOString(),
+      };
+    }
     siteSettings = normalizeSiteSettings({
       contactLinks: body.contactLinks,
+      adminAuth,
       legalDocuments: body.legalDocuments,
       updatedAt: new Date().toISOString(),
     });
@@ -1871,6 +1962,17 @@ function renderAdminPage() {
             <div class="doc-tabs" id="docTabs"></div>
             <p class="admin-help">HTML-содержимое можно редактировать вручную. Например: &lt;p&gt;Текст&lt;/p&gt;, &lt;ul&gt;&lt;li&gt;Пункт&lt;/li&gt;&lt;/ul&gt;.</p>
           </section>
+          <section class="admin-card">
+            <h2>Доступ в админку</h2>
+            <label>Логин
+              <input id="adminUsername" type="text" autocomplete="username" placeholder="admin" />
+            </label>
+            <br />
+            <label>Новый пароль
+              <input id="adminPassword" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" />
+            </label>
+            <p class="admin-help">Если новый пароль не заполнять, он не изменится. После смены доступа браузер может попросить войти заново.</p>
+          </section>
         </aside>
         <section class="admin-card">
           <h2 id="docHeading">Документ</h2>
@@ -1915,6 +2017,8 @@ function renderAdminPage() {
         var docTitle = document.getElementById("docTitle");
         var docLead = document.getElementById("docLead");
         var docContent = document.getElementById("docContent");
+        var adminUsername = document.getElementById("adminUsername");
+        var adminPassword = document.getElementById("adminPassword");
         var status = document.getElementById("status");
         var saveButton = document.getElementById("saveButton");
 
@@ -1960,12 +2064,18 @@ function renderAdminPage() {
           paths = payload.documentPaths || paths;
           telegram.value = settings.contactLinks && settings.contactLinks.telegram || "";
           vk.value = settings.contactLinks && settings.contactLinks.vk || "";
+          adminUsername.value = settings.adminAuth && settings.adminAuth.username || "";
+          adminPassword.value = "";
           renderTabs();
           renderDocument();
         }
         saveButton.addEventListener("click", async function(){
           persistActive();
           settings.contactLinks = { telegram: telegram.value, vk: vk.value };
+          settings.adminAuth = {
+            username: adminUsername.value,
+            newPassword: adminPassword.value
+          };
           saveButton.disabled = true;
           status.textContent = "Сохраняю...";
           try {
@@ -1978,6 +2088,8 @@ function renderAdminPage() {
             if (!response.ok) throw new Error("Ошибка сохранения");
             var payload = await response.json();
             settings = payload.settings || settings;
+            adminUsername.value = settings.adminAuth && settings.adminAuth.username || "";
+            adminPassword.value = "";
             status.textContent = "Сохранено: " + new Date().toLocaleString("ru-RU");
           } catch (error) {
             status.textContent = error.message || "Не удалось сохранить";
@@ -1987,6 +2099,7 @@ function renderAdminPage() {
         });
         telegram.value = settings.contactLinks && settings.contactLinks.telegram || "";
         vk.value = settings.contactLinks && settings.contactLinks.vk || "";
+        adminUsername.value = settings.adminAuth && settings.adminAuth.username || "";
         renderTabs();
         renderDocument();
         loadLatest().catch(function(error){ status.textContent = error.message; });
