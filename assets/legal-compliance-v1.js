@@ -315,7 +315,7 @@
   function installFooter() {
     var path = window.location.pathname.replace(/\/$/, "");
     var existing = document.querySelector(".site-legal-footer");
-    if (path === "/questionnaire") {
+    if (path === "/questionnaire" || path === "/result") {
       if (existing) existing.remove();
       return;
     }
