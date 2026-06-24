@@ -289,9 +289,12 @@
 
   function installDisclaimer() {
     var path = window.location.pathname.replace(/\/$/, "");
-    if (["/result", "/lead"].indexOf(path) === -1) return;
-    if (document.querySelector("[data-legal-disclaimer]")) return;
-    var disclaimer = document.createElement("aside");
+    var existing = document.querySelector("[data-legal-disclaimer]");
+    if (["/result", "/lead"].indexOf(path) === -1) {
+      if (existing) existing.remove();
+      return;
+    }
+    var disclaimer = existing || document.createElement("aside");
     disclaimer.className = "legal-disclaimer";
     disclaimer.dataset.legalDisclaimer = "true";
     disclaimer.innerHTML =
@@ -299,7 +302,14 @@
       "юридической или финансовой помощью и не гарантируют конкретный результат. При угрозе жизни, насилии, " +
       "суицидальном риске или остром кризисе обратитесь в экстренные службы по номеру 112 и к профильному специалисту.";
     var root = document.getElementById("root");
-    if (root) root.appendChild(disclaimer);
+    if (root) {
+      var target =
+        root.querySelector(".page-content") ||
+        root.querySelector("main") ||
+        root.querySelector(".page-shell") ||
+        root;
+      target.appendChild(disclaimer);
+    }
   }
 
   function installFooter() {
@@ -325,6 +335,12 @@
   }
 
   function installCookieBanner() {
+    var path = window.location.pathname.replace(/\/$/, "") || "/";
+    var existing = document.querySelector(".cookie-consent-banner");
+    if (path !== "/questionnaire") {
+      if (existing) existing.remove();
+      return;
+    }
     if (localStorage.getItem(COOKIE_KEY) || document.querySelector(".cookie-consent-banner")) return;
     var banner = document.createElement("section");
     banner.className = "cookie-consent-banner";
