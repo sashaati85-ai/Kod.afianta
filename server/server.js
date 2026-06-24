@@ -206,12 +206,22 @@ function normalizeLegalDocuments(value) {
     if (!document || typeof document !== "object") return result;
     const title = clampText(document.title, 180);
     const lead = clampText(document.lead, 1200);
-    const content = clampText(document.content, 80000);
+    const content = sanitizeAdminHtml(clampText(document.content, 80000));
     if (title || lead || content) {
       result[pathname] = { title, lead, content };
     }
     return result;
   }, {});
+}
+
+function sanitizeAdminHtml(value) {
+  return String(value || "")
+    .replace(/<\s*(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|style|iframe|object|embed)[^>]*\/?\s*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(['"]).*?\1/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi, "")
+    .replace(/\s+(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, "")
+    .trim();
 }
 
 function normalizeAdminAuth(value) {
@@ -1933,10 +1943,24 @@ function renderAdminPage() {
       input:focus,textarea:focus,select:focus{border-color:rgba(185,138,71,.55);box-shadow:0 0 0 4px rgba(185,138,71,.12)}
       .doc-tabs{display:grid;gap:8px}.doc-tab{width:100%;min-height:42px;border:1px solid var(--line);border-radius:13px;background:#fffaf1;color:var(--ink);font:inherit;font-weight:700;text-align:left;padding:9px 12px;cursor:pointer}
       .doc-tab.is-active{background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;border-color:transparent}
+      .editor-label{display:grid;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
+      .editor-shell{overflow:hidden;border:1px solid rgba(70,45,28,.16);border-radius:18px;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.65)}
+      .editor-toolbar{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-bottom:1px solid rgba(185,138,71,.18);background:linear-gradient(180deg,#fffaf1,#fffdf8)}
+      .editor-toolbar button,.editor-toolbar select{width:auto;min-height:36px;border:1px solid rgba(185,138,71,.25);border-radius:11px;background:#fffdf8;color:var(--ink);font:inherit;font-size:13px;font-weight:800;padding:7px 10px;cursor:pointer}
+      .editor-toolbar select{min-width:150px}
+      .editor-toolbar button:hover,.editor-toolbar select:hover{border-color:rgba(185,138,71,.48);box-shadow:0 8px 18px rgba(90,58,30,.07)}
+      .doc-editor{min-height:520px;padding:26px 30px;color:#3f2d23;font-family:Georgia,"Times New Roman",serif;font-size:18px;font-weight:400;line-height:1.62;outline:none}
+      .doc-editor:focus{box-shadow:inset 0 0 0 4px rgba(185,138,71,.10)}
+      .doc-editor:empty:before{content:"Начните писать документ здесь...";color:rgba(117,95,80,.48)}
+      .doc-editor h2,.doc-editor h3{margin:1.25em 0 .45em;color:#342219;line-height:1.2}
+      .doc-editor h2{font-size:28px}.doc-editor h3{font-size:22px}
+      .doc-editor p{margin:.7em 0}.doc-editor ul,.doc-editor ol{margin:.75em 0 .9em;padding-left:1.35em}.doc-editor li{margin:.32em 0}
+      .doc-editor a{color:#8a612b;text-decoration:underline;text-underline-offset:3px}
+      .doc-editor blockquote{margin:1em 0;padding:14px 18px;border-left:3px solid var(--gold);background:#fff9ed;color:#5c473b}
       .admin-actions{position:sticky;bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:18px;background:rgba(255,253,248,.94);backdrop-filter:blur(14px)}
       .admin-save{min-height:46px;border:0;border-radius:15px;background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;font:inherit;font-weight:800;padding:0 22px;cursor:pointer;box-shadow:0 12px 28px rgba(110,72,34,.18)}
       .admin-status{color:var(--muted);font-size:14px}.admin-help{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.55}.admin-preview-link{color:#765326;text-underline-offset:3px}
-      @media(max-width:800px){.admin-shell{width:min(100% - 20px,1180px);padding-top:18px}.admin-grid{grid-template-columns:1fr}.admin-top{display:grid}.admin-actions{position:static;display:grid}.admin-save{width:100%}}
+      @media(max-width:800px){.admin-shell{width:min(100% - 20px,1180px);padding-top:18px}.admin-grid{grid-template-columns:1fr}.admin-top{display:grid}.admin-actions{position:static;display:grid}.admin-save{width:100%}.doc-editor{min-height:420px;padding:20px 18px;font-size:16px}.editor-toolbar select{width:100%;min-width:0}.editor-toolbar button{flex:1 1 auto}}
     </style>
   </head>
   <body>
@@ -1964,7 +1988,7 @@ function renderAdminPage() {
           <section class="admin-card">
             <h2>Документы</h2>
             <div class="doc-tabs" id="docTabs"></div>
-            <p class="admin-help">HTML-содержимое можно редактировать вручную. Например: &lt;p&gt;Текст&lt;/p&gt;, &lt;ul&gt;&lt;li&gt;Пункт&lt;/li&gt;&lt;/ul&gt;.</p>
+            <p class="admin-help">Выберите документ и редактируйте его как обычный текст. Форматирование сохранится на сайте.</p>
           </section>
           <section class="admin-card">
             <h2>Доступ в админку</h2>
@@ -1987,9 +2011,28 @@ function renderAdminPage() {
             <label>Описание под заголовком
               <textarea id="docLead" style="min-height:110px;font-family:inherit;font-size:15px"></textarea>
             </label>
-            <label>HTML-содержимое документа
-              <textarea id="docContent"></textarea>
-            </label>
+            <div class="editor-label">Содержимое документа
+              <div class="editor-shell">
+                <div class="editor-toolbar" aria-label="Панель форматирования документа">
+                  <select id="blockFormat" aria-label="Стиль текста">
+                    <option value="P">Обычный текст</option>
+                    <option value="H2">Заголовок</option>
+                    <option value="H3">Подзаголовок</option>
+                  </select>
+                  <button type="button" data-command="bold">B</button>
+                  <button type="button" data-command="italic">I</button>
+                  <button type="button" data-command="underline">U</button>
+                  <button type="button" data-command="insertUnorderedList">Список</button>
+                  <button type="button" data-command="insertOrderedList">1. 2.</button>
+                  <button type="button" data-command="formatBlock" data-value="BLOCKQUOTE">Цитата</button>
+                  <button type="button" data-command="createLink">Ссылка</button>
+                  <button type="button" data-command="removeFormat">Убрать стиль</button>
+                  <button type="button" data-command="undo">Назад</button>
+                  <button type="button" data-command="redo">Вперёд</button>
+                </div>
+                <div id="docEditor" class="doc-editor" contenteditable="true" role="textbox" aria-multiline="true"></div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -2020,12 +2063,41 @@ function renderAdminPage() {
         var docHeading = document.getElementById("docHeading");
         var docTitle = document.getElementById("docTitle");
         var docLead = document.getElementById("docLead");
-        var docContent = document.getElementById("docContent");
+        var docEditor = document.getElementById("docEditor");
+        var blockFormat = document.getElementById("blockFormat");
         var adminUsername = document.getElementById("adminUsername");
         var adminPassword = document.getElementById("adminPassword");
         var status = document.getElementById("status");
         var saveButton = document.getElementById("saveButton");
 
+        function cleanEditorHtml(html){
+          var template = document.createElement("template");
+          template.innerHTML = html || "";
+          template.content.querySelectorAll("script,style,iframe,object,embed").forEach(function(node){
+            node.remove();
+          });
+          template.content.querySelectorAll("*").forEach(function(node){
+            Array.prototype.slice.call(node.attributes).forEach(function(attribute){
+              var name = attribute.name.toLowerCase();
+              var value = attribute.value || "";
+              if (name.indexOf("on") === 0 || value.trim().toLowerCase().indexOf("javascript:") === 0) {
+                node.removeAttribute(attribute.name);
+              }
+              if (name === "style" || name === "class") {
+                node.removeAttribute(attribute.name);
+              }
+            });
+          });
+          return template.innerHTML.trim();
+        }
+        function focusEditor(){
+          docEditor.focus();
+        }
+        function runEditorCommand(command, value){
+          focusEditor();
+          document.execCommand(command, false, value || null);
+          docEditor.dispatchEvent(new Event("input", { bubbles: true }));
+        }
         function ensureDoc(path){
           settings.legalDocuments = settings.legalDocuments || {};
           settings.legalDocuments[path] = settings.legalDocuments[path] || { title:"", lead:"", content:"" };
@@ -2035,7 +2107,7 @@ function renderAdminPage() {
           var doc = ensureDoc(activePath);
           doc.title = docTitle.value;
           doc.lead = docLead.value;
-          doc.content = docContent.value;
+          doc.content = cleanEditorHtml(docEditor.innerHTML);
         }
         function renderTabs(){
           docTabs.innerHTML = "";
@@ -2058,7 +2130,8 @@ function renderAdminPage() {
           docHeading.textContent = labels[activePath] || activePath;
           docTitle.value = doc.title || "";
           docLead.value = doc.lead || "";
-          docContent.value = doc.content || "";
+          docEditor.innerHTML = doc.content || "";
+          blockFormat.value = "P";
         }
         async function loadLatest(){
           var response = await fetch("/api/admin-settings", { credentials: "same-origin" });
@@ -2073,6 +2146,34 @@ function renderAdminPage() {
           renderTabs();
           renderDocument();
         }
+        blockFormat.addEventListener("change", function(){
+          runEditorCommand("formatBlock", blockFormat.value);
+        });
+        document.querySelectorAll(".editor-toolbar [data-command]").forEach(function(button){
+          button.addEventListener("click", function(){
+            var command = button.getAttribute("data-command");
+            var value = button.getAttribute("data-value") || null;
+            if (command === "createLink") {
+              var href = prompt("Вставьте ссылку");
+              if (!href) return;
+              try {
+                var parsed = new URL(href, window.location.origin);
+                if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+                runEditorCommand(command, parsed.href);
+              } catch (_) {}
+              return;
+            }
+            runEditorCommand(command, value);
+          });
+        });
+        docEditor.addEventListener("paste", function(event){
+          event.preventDefault();
+          var text = (event.clipboardData || window.clipboardData).getData("text/plain");
+          var html = text.split(/\n{2,}/).map(function(part){
+            return "<p>" + part.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</p>";
+          }).join("");
+          runEditorCommand("insertHTML", html || "");
+        });
         saveButton.addEventListener("click", async function(){
           persistActive();
           settings.contactLinks = { telegram: telegram.value, vk: vk.value };
