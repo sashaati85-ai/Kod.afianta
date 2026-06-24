@@ -18,6 +18,8 @@ const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || "";
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || "";
 const YOOKASSA_API_URL = (process.env.YOOKASSA_API_URL || "https://api.yookassa.ru/v3").replace(/\/$/, "");
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "https://kod.afianta.ru").replace(/\/$/, "");
+const CONTACT_TELEGRAM_URL = process.env.CONTACT_TELEGRAM_URL || "https://t.me/afianta";
+const CONTACT_VK_URL = process.env.CONTACT_VK_URL || "https://vk.com/afianta";
 const ADMIN_BASIC_AUTH = process.env.ADMIN_BASIC_AUTH || "";
 const DEBUG_AI_REPORT = process.env.DEBUG_AI_REPORT === "1";
 const REPORT_RETENTION_DAYS = Math.max(30, Number(process.env.REPORT_RETENTION_DAYS || 180));
@@ -1620,6 +1622,50 @@ function serveStatic(req, res) {
   });
 }
 
+function renderLeadContactPage() {
+  return `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Оставить заявку — Код отношений</title>
+    <link rel="stylesheet" href="/assets/local-fonts-v1.css?v=1" />
+    <link rel="stylesheet" href="/assets/index-CSe4HaY7.css" />
+    <link rel="stylesheet" href="/assets/final-contact-step-v1.css?v=1" />
+  </head>
+  <body class="final-contact-step-body">
+    <div id="root">
+      <main class="final-contact-step" aria-labelledby="final-contact-title">
+        <section class="final-contact-card">
+          <div class="final-contact-brand">
+            <img src="/assets/logo-gold-DMOg8YAH.png" alt="" class="final-contact-logo" />
+            <div>
+              <p class="final-contact-eyebrow">Код отношений</p>
+              <p class="final-contact-brandline">Александр и Анна Тимофеевы</p>
+            </div>
+          </div>
+          <div class="final-contact-copy">
+            <h1 id="final-contact-title">Где вам удобно оставить заявку?</h1>
+            <p>Выберите удобный способ связи. Мы получим ваше сообщение и вернёмся с ответом, чтобы согласовать бесплатную диагностику отношений.</p>
+          </div>
+          <div class="final-contact-actions" aria-label="Способы связи">
+            <a class="final-contact-button final-contact-button-telegram" href="${CONTACT_TELEGRAM_URL}" target="_blank" rel="noopener">
+              <span class="final-contact-button-icon">TG</span>
+              <span><strong>Telegram</strong><small>Оставить заявку в Telegram</small></span>
+            </a>
+            <a class="final-contact-button final-contact-button-vk" href="${CONTACT_VK_URL}" target="_blank" rel="noopener">
+              <span class="final-contact-button-icon">VK</span>
+              <span><strong>ВКонтакте</strong><small>Оставить заявку в VK</small></span>
+            </a>
+          </div>
+          <p class="final-contact-note">Откроется выбранный мессенджер. Напишите коротко: «Хочу бесплатную диагностику».</p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
@@ -1640,6 +1686,15 @@ const server = http.createServer(async (req, res) => {
         ...securityHeaders(),
       });
       res.end();
+      return;
+    }
+    if (legalPath === "/lead") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        ...securityHeaders(),
+      });
+      res.end(renderLeadContactPage());
       return;
     }
     if (DOCUMENTS[legalPath]) {

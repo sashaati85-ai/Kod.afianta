@@ -290,7 +290,7 @@
   function installDisclaimer() {
     var path = window.location.pathname.replace(/\/$/, "");
     var existing = document.querySelector("[data-legal-disclaimer]");
-    if (["/result", "/lead"].indexOf(path) === -1) {
+    if (path !== "/result") {
       if (existing) existing.remove();
       return;
     }
@@ -315,7 +315,7 @@
   function installFooter() {
     var path = window.location.pathname.replace(/\/$/, "");
     var existing = document.querySelector(".site-legal-footer");
-    if (path === "/questionnaire" || path === "/result") {
+    if (path === "/questionnaire" || path === "/result" || path === "/lead") {
       if (existing) existing.remove();
       return;
     }
