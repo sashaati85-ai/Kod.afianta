@@ -116,6 +116,14 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+function sendPaidFlowDisabled(res) {
+  sendJson(res, 410, {
+    error: "Paid flow is disabled",
+    nextStep: "free_diagnosis",
+    redirectTo: "/lead",
+  });
+}
+
 function securityHeaders() {
   return {
     "X-Content-Type-Options": "nosniff",
@@ -1616,6 +1624,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
     const legalPath = url.pathname.replace(/\/+$/, "") || "/";
+    if (legalPath === "/offer" || legalPath === "/refund") {
+      res.writeHead(302, {
+        Location: "/contacts",
+        "Cache-Control": "no-store",
+        ...securityHeaders(),
+      });
+      res.end();
+      return;
+    }
     if (DOCUMENTS[legalPath]) {
       const html = renderLegalDocument(legalPath, { priceRub: PRODUCT_PRICE_RUB });
       res.writeHead(200, {
@@ -1642,33 +1659,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (url.pathname === "/api/generate-paid-report") {
-      if (!requireRateLimit(req, res, "paid-report", 10)) return;
-      await handleGeneratePaidReport(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/product-settings") {
-      await handleProductSettings(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/create-payment") {
-      if (!requireRateLimit(req, res, "create-payment", 10)) return;
-      await handleCreateYookassaPayment(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/payment-status") {
-      await handleYookassaPaymentStatus(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/payment-context") {
-      handlePaymentContext(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/attach-payment-context") {
-      await handleAttachPaymentContext(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     if (url.pathname === "/api/yookassa-notification") {
-      await handleYookassaNotification(req, res);
+      sendPaidFlowDisabled(res);
       return;
     }
     serveStatic(req, res);

@@ -1,0 +1,18 @@
+.free-diagnosis-offer .result-emphasis-box {
+  border-color: rgba(184, 139, 72, 0.38);
+  background:
+    linear-gradient(145deg, rgba(255, 253, 247, 0.96), rgba(250, 238, 216, 0.72));
+}
+
+.free-diagnosis-offer .offer-actions {
+  margin-top: 24px;
+}
+
+.free-diagnosis-offer .action-subhint,
+.free-diagnosis-offer .offer-hint {
+  color: #5d4437;
+}
+
+.free-diagnosis-offer .text-link-button {
+  color: #8b622f;
+}

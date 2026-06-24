@@ -15,8 +15,6 @@
     ["/personal-data-consent", "Согласие на обработку данных"],
     ["/marketing-consent", "Согласие на рассылку"],
     ["/cookies", "Cookies"],
-    ["/offer", "Публичная оферта"],
-    ["/refund", "Возврат"],
     ["/contacts", "Контакты"]
   ];
 
@@ -291,7 +289,7 @@
 
   function installDisclaimer() {
     var path = window.location.pathname.replace(/\/$/, "");
-    if (["/result", "/full-report", "/payment", "/lead"].indexOf(path) === -1) return;
+    if (["/result", "/lead"].indexOf(path) === -1) return;
     if (document.querySelector("[data-legal-disclaimer]")) return;
     var disclaimer = document.createElement("aside");
     disclaimer.className = "legal-disclaimer";
@@ -333,7 +331,7 @@
     banner.setAttribute("role", "dialog");
     banner.setAttribute("aria-label", "Настройки cookies");
     banner.innerHTML =
-      "<p>Мы используем необходимые технологии браузера, чтобы сохранить ответы анкеты и вернуть доступ после оплаты. " +
+      "<p>Мы используем необходимые технологии браузера, чтобы сохранить ответы анкеты и корректно открыть ваш результат. " +
       link("/cookies", "Политика cookies") + ".</p>" +
       '<div class="cookie-consent-actions">' +
         '<button type="button" class="cookie-consent-necessary">Только необходимые</button>' +
