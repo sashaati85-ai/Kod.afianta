@@ -1633,6 +1633,15 @@ const server = http.createServer(async (req, res) => {
       res.end();
       return;
     }
+    if (legalPath === "/payment" || legalPath === "/payment/return" || legalPath === "/full-report") {
+      res.writeHead(302, {
+        Location: "/lead",
+        "Cache-Control": "no-store",
+        ...securityHeaders(),
+      });
+      res.end();
+      return;
+    }
     if (DOCUMENTS[legalPath]) {
       const html = renderLegalDocument(legalPath, { priceRub: PRODUCT_PRICE_RUB });
       res.writeHead(200, {
