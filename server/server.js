@@ -32,6 +32,7 @@ const paymentCache = new Map();
 const consentCache = new Map();
 const paidReportInFlight = new Map();
 const rateLimitCache = new Map();
+const adminSessions = new Map();
 let siteSettings = null;
 
 const MIME_TYPES = {
@@ -187,9 +188,16 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function normalizeUrl(value, fallback) {
-  const url = clampText(value, 500);
+function normalizeContactUrl(value, fallback, kind) {
+  let url = clampText(value, 500);
   if (!url) return fallback;
+  if (url.startsWith("@")) {
+    url = kind === "vk" ? `https://vk.com/${url.slice(1)}` : `https://t.me/${url.slice(1)}`;
+  } else if (/^(t\.me|telegram\.me|vk\.com|vk\.ru)\//i.test(url)) {
+    url = `https://${url}`;
+  } else if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+    url = `https://${url}`;
+  }
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return fallback;
@@ -273,7 +281,65 @@ function adminAuthMatchesFallback(req) {
   return Boolean(ADMIN_BASIC_AUTH && timingSafeEqualExact(req.headers.authorization, ADMIN_BASIC_AUTH));
 }
 
+function parseCookies(req) {
+  return String(req.headers.cookie || "").split(";").reduce((result, part) => {
+    const index = part.indexOf("=");
+    if (index <= 0) return result;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (key) result[key] = decodeURIComponent(value);
+    return result;
+  }, {});
+}
+
+function cleanupAdminSessions() {
+  const now = Date.now();
+  for (const [token, session] of adminSessions.entries()) {
+    if (!session || session.expiresAt <= now) adminSessions.delete(token);
+  }
+}
+
+function adminSessionMatches(req) {
+  cleanupAdminSessions();
+  const token = parseCookies(req).kod_admin_session;
+  if (!token) return false;
+  const session = adminSessions.get(token);
+  return Boolean(session && session.expiresAt > Date.now());
+}
+
+function verifyAdminCredentials(username, password) {
+  const adminAuth = getSiteSettings().adminAuth;
+  if (adminAuth.username && adminAuth.passwordHash && adminAuth.passwordSalt) {
+    if (!timingSafeEqualExact(username, adminAuth.username)) return false;
+    const candidate = hashAdminPassword(password, adminAuth.passwordSalt).passwordHash;
+    return timingSafeEqualExact(candidate, adminAuth.passwordHash);
+  }
+  const fallback = parseBasicAuthHeader(ADMIN_BASIC_AUTH);
+  return Boolean(
+    fallback &&
+    timingSafeEqualExact(username, fallback.username) &&
+    timingSafeEqualExact(password, fallback.password)
+  );
+}
+
+function issueAdminSession(res) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const maxAge = 60 * 60 * 12;
+  adminSessions.set(token, {
+    createdAt: Date.now(),
+    expiresAt: Date.now() + maxAge * 1000,
+  });
+  res.setHeader("Set-Cookie", `kod_admin_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`);
+}
+
+function clearAdminSession(req, res) {
+  const token = parseCookies(req).kod_admin_session;
+  if (token) adminSessions.delete(token);
+  res.setHeader("Set-Cookie", "kod_admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+}
+
 function verifyAdminRequest(req) {
+  if (adminSessionMatches(req)) return true;
   const adminAuth = getSiteSettings().adminAuth;
   if (adminAuth.username && adminAuth.passwordHash && adminAuth.passwordSalt) {
     return adminAuthMatchesSaved(req);
@@ -287,8 +353,8 @@ function normalizeSiteSettings(value = {}) {
     : {};
   return {
     contactLinks: {
-      telegram: normalizeUrl(contactLinks.telegram, DEFAULT_SITE_SETTINGS.contactLinks.telegram),
-      vk: normalizeUrl(contactLinks.vk, DEFAULT_SITE_SETTINGS.contactLinks.vk),
+      telegram: normalizeContactUrl(contactLinks.telegram, DEFAULT_SITE_SETTINGS.contactLinks.telegram, "telegram"),
+      vk: normalizeContactUrl(contactLinks.vk, DEFAULT_SITE_SETTINGS.contactLinks.vk, "vk"),
     },
     adminAuth: normalizeAdminAuth(value.adminAuth),
     legalDocuments: normalizeLegalDocuments(value.legalDocuments),
@@ -563,6 +629,27 @@ function handleAdminSession(req, res) {
   sendJson(res, 200, { authenticated: true });
 }
 
+async function handleAdminLogin(req, res) {
+  if (req.method === "DELETE" || req.method === "POST" && req.url.includes("logout")) {
+    clearAdminSession(req, res);
+    sendJson(res, 200, { loggedOut: true });
+    return;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  const body = await readJson(req);
+  const username = clampText(body.username, 80);
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!verifyAdminCredentials(username, password)) {
+    sendJson(res, 401, { error: "Неверный логин или пароль" });
+    return;
+  }
+  issueAdminSession(res);
+  sendJson(res, 200, { authenticated: true });
+}
+
 function requireAdmin(req, res) {
   const hasSavedAuth = Boolean(getSiteSettings().adminAuth.username && getSiteSettings().adminAuth.passwordHash);
   if (!ADMIN_BASIC_AUTH && !hasSavedAuth) {
@@ -571,7 +658,6 @@ function requireAdmin(req, res) {
   }
   if (!verifyAdminRequest(req)) {
     res.writeHead(401, {
-      "WWW-Authenticate": 'Basic realm="KOD Admin", charset="UTF-8"',
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...securityHeaders(),
@@ -1917,6 +2003,77 @@ function renderLeadContactPage() {
 </html>`;
 }
 
+function renderAdminLoginPage() {
+  return `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Вход в админ-панель — Код отношений</title>
+    <style>
+      :root{--ink:#342219;--muted:#755f50;--gold:#b98a47;--line:rgba(185,138,71,.24);--bg:#fbf7ef}
+      *{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:22px;color:var(--ink);background:radial-gradient(circle at 20% 0,rgba(222,188,132,.22),transparent 36%),var(--bg);font-family:Inter,Arial,sans-serif}
+      .login-card{width:min(100%,430px);padding:28px;border:1px solid var(--line);border-radius:26px;background:rgba(255,253,248,.96);box-shadow:0 24px 70px rgba(80,52,29,.11)}
+      .login-kicker{margin:0 0 9px;color:var(--gold);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+      h1{margin:0 0 18px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,10vw,48px);line-height:1}
+      label{display:grid;gap:8px;margin-top:14px;color:var(--muted);font-size:13px;font-weight:800}
+      input{width:100%;min-height:54px;border:1px solid rgba(70,45,28,.16);border-radius:15px;background:#fff;color:var(--ink);font:inherit;font-size:16px;padding:12px 14px;outline:none}
+      input:focus{border-color:rgba(185,138,71,.55);box-shadow:0 0 0 4px rgba(185,138,71,.12)}
+      button{width:100%;min-height:54px;margin-top:18px;border:0;border-radius:16px;background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;font:inherit;font-weight:900;cursor:pointer;box-shadow:0 14px 32px rgba(110,72,34,.2)}
+      button:disabled{opacity:.65;cursor:wait}.login-status{min-height:22px;margin:14px 0 0;color:#9b3f2f;font-size:14px;line-height:1.45}.login-help{margin:16px 0 0;color:var(--muted);font-size:13px;line-height:1.55}
+    </style>
+  </head>
+  <body>
+    <main class="login-card">
+      <p class="login-kicker">KOD Admin</p>
+      <h1>Вход</h1>
+      <form id="loginForm">
+        <label>Логин
+          <input id="login" name="username" type="text" autocomplete="username" required />
+        </label>
+        <label>Пароль
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button id="loginButton" type="submit">Войти в админ-панель</button>
+        <p class="login-status" id="loginStatus"></p>
+      </form>
+      <p class="login-help">После входа вы сможете редактировать ссылки кнопок и юридические документы.</p>
+    </main>
+    <script>
+      (function(){
+        var form = document.getElementById("loginForm");
+        var button = document.getElementById("loginButton");
+        var status = document.getElementById("loginStatus");
+        form.addEventListener("submit", async function(event){
+          event.preventDefault();
+          button.disabled = true;
+          status.textContent = "Проверяю доступ...";
+          try {
+            var response = await fetch("/api/admin-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({
+                username: document.getElementById("login").value,
+                password: document.getElementById("password").value
+              })
+            });
+            var payload = await response.json().catch(function(){ return {}; });
+            if (!response.ok) throw new Error(payload.error || "Не удалось войти");
+            window.location.href = "/admin";
+          } catch (error) {
+            status.textContent = error.message || "Неверный логин или пароль";
+          } finally {
+            button.disabled = false;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
 function renderAdminPage() {
   const settingsJson = JSON.stringify(getSiteSettings()).replace(/</g, "\\u003c");
   const documentPathsJson = JSON.stringify(Object.keys(DOCUMENTS)).replace(/</g, "\\u003c");
@@ -1943,6 +2100,8 @@ function renderAdminPage() {
       input:focus,textarea:focus,select:focus{border-color:rgba(185,138,71,.55);box-shadow:0 0 0 4px rgba(185,138,71,.12)}
       .doc-tabs{display:grid;gap:8px}.doc-tab{width:100%;min-height:42px;border:1px solid var(--line);border-radius:13px;background:#fffaf1;color:var(--ink);font:inherit;font-weight:700;text-align:left;padding:9px 12px;cursor:pointer}
       .doc-tab.is-active{background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;border-color:transparent}
+      .doc-switcher{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,260px);gap:14px;align-items:end;margin-bottom:18px}
+      .doc-switcher h2{margin:0}.doc-switcher label{margin:0}
       .editor-label{display:grid;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
       .editor-shell{overflow:hidden;border:1px solid rgba(70,45,28,.16);border-radius:18px;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.65)}
       .editor-toolbar{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-bottom:1px solid rgba(185,138,71,.18);background:linear-gradient(180deg,#fffaf1,#fffdf8)}
@@ -1960,7 +2119,7 @@ function renderAdminPage() {
       .admin-actions{position:sticky;bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:18px;background:rgba(255,253,248,.94);backdrop-filter:blur(14px)}
       .admin-save{min-height:46px;border:0;border-radius:15px;background:linear-gradient(145deg,#d7aa64,#9b6a32);color:#fffaf2;font:inherit;font-weight:800;padding:0 22px;cursor:pointer;box-shadow:0 12px 28px rgba(110,72,34,.18)}
       .admin-status{color:var(--muted);font-size:14px}.admin-help{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.55}.admin-preview-link{color:#765326;text-underline-offset:3px}
-      @media(max-width:800px){.admin-shell{width:min(100% - 20px,1180px);padding-top:18px}.admin-grid{grid-template-columns:1fr}.admin-top{display:grid}.admin-actions{position:static;display:grid}.admin-save{width:100%}.doc-editor{min-height:420px;padding:20px 18px;font-size:16px}.editor-toolbar select{width:100%;min-width:0}.editor-toolbar button{flex:1 1 auto}}
+      @media(max-width:800px){.admin-shell{width:min(100% - 20px,1180px);padding-top:18px}.admin-grid{grid-template-columns:1fr}.admin-top{display:grid}.admin-card{padding:18px;border-radius:20px}.doc-switcher{grid-template-columns:1fr}.admin-actions{position:static;display:grid}.admin-save{width:100%}.doc-editor{min-height:420px;padding:20px 18px;font-size:16px}.editor-toolbar select{width:100%;min-width:0}.editor-toolbar button{flex:1 1 auto}}
     </style>
   </head>
   <body>
@@ -2003,7 +2162,12 @@ function renderAdminPage() {
           </section>
         </aside>
         <section class="admin-card">
-          <h2 id="docHeading">Документ</h2>
+          <div class="doc-switcher">
+            <h2 id="docHeading">Документ</h2>
+            <label>Выбрать документ
+              <select id="docSelect"></select>
+            </label>
+          </div>
           <div class="admin-stack">
             <label>Заголовок
               <input id="docTitle" type="text" />
@@ -2060,6 +2224,7 @@ function renderAdminPage() {
         var telegram = document.getElementById("telegram");
         var vk = document.getElementById("vk");
         var docTabs = document.getElementById("docTabs");
+        var docSelect = document.getElementById("docSelect");
         var docHeading = document.getElementById("docHeading");
         var docTitle = document.getElementById("docTitle");
         var docLead = document.getElementById("docLead");
@@ -2103,6 +2268,13 @@ function renderAdminPage() {
           settings.legalDocuments[path] = settings.legalDocuments[path] || { title:"", lead:"", content:"" };
           return settings.legalDocuments[path];
         }
+        function activateDocument(path){
+          if (!path || path === activePath) return;
+          persistActive();
+          activePath = path;
+          renderDocument();
+          renderTabs();
+        }
         function persistActive(){
           var doc = ensureDoc(activePath);
           doc.title = docTitle.value;
@@ -2111,19 +2283,20 @@ function renderAdminPage() {
         }
         function renderTabs(){
           docTabs.innerHTML = "";
+          docSelect.innerHTML = "";
           paths.forEach(function(path){
             var button = document.createElement("button");
             button.type = "button";
             button.className = "doc-tab" + (path === activePath ? " is-active" : "");
+            button.setAttribute("data-doc-path", path);
             button.textContent = labels[path] || path;
-            button.addEventListener("click", function(){
-              persistActive();
-              activePath = path;
-              renderDocument();
-              renderTabs();
-            });
             docTabs.appendChild(button);
+            var option = document.createElement("option");
+            option.value = path;
+            option.textContent = labels[path] || path;
+            docSelect.appendChild(option);
           });
+          docSelect.value = activePath;
         }
         function renderDocument(){
           var doc = ensureDoc(activePath);
@@ -2132,6 +2305,7 @@ function renderAdminPage() {
           docLead.value = doc.lead || "";
           docEditor.innerHTML = doc.content || "";
           blockFormat.value = "P";
+          docSelect.value = activePath;
         }
         async function loadLatest(){
           var response = await fetch("/api/admin-settings", { credentials: "same-origin" });
@@ -2148,6 +2322,14 @@ function renderAdminPage() {
         }
         blockFormat.addEventListener("change", function(){
           runEditorCommand("formatBlock", blockFormat.value);
+        });
+        docTabs.addEventListener("click", function(event){
+          var button = event.target.closest("[data-doc-path]");
+          if (!button) return;
+          activateDocument(button.getAttribute("data-doc-path"));
+        });
+        docSelect.addEventListener("change", function(){
+          activateDocument(docSelect.value);
         });
         document.querySelectorAll(".editor-toolbar [data-command]").forEach(function(button){
           button.addEventListener("click", function(){
@@ -2169,8 +2351,8 @@ function renderAdminPage() {
         docEditor.addEventListener("paste", function(event){
           event.preventDefault();
           var text = (event.clipboardData || window.clipboardData).getData("text/plain");
-          var html = text.split(/\n{2,}/).map(function(part){
-            return "<p>" + part.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</p>";
+          var html = text.split(/\\n{2,}/).map(function(part){
+            return "<p>" + part.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\\n/g, "<br>") + "</p>";
           }).join("");
           runEditorCommand("insertHTML", html || "");
         });
@@ -2268,6 +2450,17 @@ const server = http.createServer(async (req, res) => {
       handleAdminSession(req, res);
       return;
     }
+    if (url.pathname === "/api/admin-login") {
+      if (!requireRateLimit(req, res, "admin-login", 20)) return;
+      await handleAdminLogin(req, res);
+      return;
+    }
+    if (url.pathname === "/api/admin-logout") {
+      if (!requireRateLimit(req, res, "admin-logout", 20)) return;
+      clearAdminSession(req, res);
+      sendJson(res, 200, { loggedOut: true });
+      return;
+    }
     if (url.pathname === "/api/admin-settings") {
       if (!requireRateLimit(req, res, "admin-settings", 60)) return;
       await handleAdminSettings(req, res);
@@ -2307,7 +2500,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (legalPath === "/admin") {
-      if (!requireAdmin(req, res)) return;
+      if (!verifyAdminRequest(req)) {
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          ...securityHeaders(),
+        });
+        res.end(renderAdminLoginPage());
+        return;
+      }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store, no-cache, must-revalidate",
