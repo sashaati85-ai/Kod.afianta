@@ -5,6 +5,8 @@
   var VK_URL = "https://vk.com/afianta";
   var LOGO_URL = "/assets/logo-gold-DMOg8YAH.png";
   var rendered = false;
+  var settingsLoadedAt = 0;
+  var settingsLoading = false;
 
   function path() {
     return window.location.pathname.replace(/\/+$/, "") || "/";
@@ -45,15 +47,64 @@
           '<p class="final-contact-note">Откроется выбранный мессенджер. Напишите коротко: «Хочу бесплатную диагностику».</p>' +
         '</section>' +
       '</main>';
+    refreshContactLinks();
+    loadContactLinks();
+  }
+
+  function normalizeLink(value, fallback) {
+    if (typeof value !== "string" || !value.trim()) return fallback;
+    return value.trim();
+  }
+
+  function refreshContactLinks() {
+    var telegram = document.querySelector(".final-contact-button-telegram");
+    var vk = document.querySelector(".final-contact-button-vk");
+    if (telegram) telegram.href = TELEGRAM_URL;
+    if (vk) vk.href = VK_URL;
+    document.querySelectorAll('a[href*="t.me"], a[href*="telegram"]').forEach(function (link) {
+      if (link.closest(".final-contact-actions") || /telegram/i.test(link.textContent || "")) {
+        link.href = TELEGRAM_URL;
+      }
+    });
+    document.querySelectorAll('a[href*="vk.com"], a[href*="vk.ru"]').forEach(function (link) {
+      if (link.closest(".final-contact-actions") || /vk|вконтакте/i.test(link.textContent || "")) {
+        link.href = VK_URL;
+      }
+    });
+  }
+
+  async function loadContactLinks() {
+    if (settingsLoading || Date.now() - settingsLoadedAt < 15000) return;
+    settingsLoading = true;
+    try {
+      var response = await fetch("/api/site-settings?ts=" + Date.now(), {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Settings request failed");
+      var payload = await response.json();
+      var links = payload && payload.contactLinks ? payload.contactLinks : {};
+      TELEGRAM_URL = normalizeLink(links.telegram, TELEGRAM_URL);
+      VK_URL = normalizeLink(links.vk, VK_URL);
+      settingsLoadedAt = Date.now();
+      refreshContactLinks();
+    } catch (error) {
+      settingsLoadedAt = 0;
+    } finally {
+      settingsLoading = false;
+    }
   }
 
   function scheduleRender() {
     renderFinalContactStep();
+    loadContactLinks();
     window.setTimeout(renderFinalContactStep, 250);
     window.setTimeout(renderFinalContactStep, 900);
   }
 
   var observer = new MutationObserver(function () {
+    refreshContactLinks();
+    loadContactLinks();
     if (path() === "/lead" && !document.querySelector(".final-contact-step")) {
       rendered = false;
       renderFinalContactStep();

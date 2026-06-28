@@ -413,6 +413,14 @@ function adminSettingsPayload() {
   };
 }
 
+function publicSiteSettingsPayload() {
+  const settings = getSiteSettings();
+  return {
+    contactLinks: settings.contactLinks,
+    updatedAt: settings.updatedAt || "",
+  };
+}
+
 function normalizeAiReport(input) {
   if (!input || typeof input !== "object") return null;
   const teaserItems = Array.isArray(input.paidReportTeaserItems)
@@ -2464,6 +2472,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/admin-settings") {
       if (!requireRateLimit(req, res, "admin-settings", 60)) return;
       await handleAdminSettings(req, res);
+      return;
+    }
+    if (url.pathname === "/api/site-settings") {
+      if (!requireRateLimit(req, res, "site-settings", 120)) return;
+      sendJson(res, 200, publicSiteSettingsPayload());
       return;
     }
     if (url.pathname === "/api/generate-free-report") {
