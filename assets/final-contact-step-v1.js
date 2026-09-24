@@ -44,7 +44,7 @@
               '<span><strong>ВКонтакте</strong><small>Оставить заявку в VK</small></span>' +
             '</a>' +
           '</div>' +
-          '<p class="final-contact-note">Откроется выбранный мессенджер. Напишите коротко: «Хочу бесплатную диагностику».</p>' +
+          '<p class="final-contact-note">' + finalContactNote() + '</p>' +
         '</section>' +
       '</main>';
     refreshContactLinks();
@@ -56,14 +56,53 @@
     return value.trim();
   }
 
+  function getDiagnosticContext() {
+    try {
+      var value = JSON.parse(sessionStorage.getItem("kod-diagnostic-contact-context") || "null");
+      if (!value || typeof value !== "object") return null;
+      if (value.source !== "diagnostic") return null;
+      return {
+        format: value.format === "code" ? "code" : "psychology",
+        scenario: typeof value.scenario === "string" ? value.scenario.slice(0, 72) : ""
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function telegramUrlWithContext(url) {
+    var context = getDiagnosticContext();
+    if (!context) return url;
+    try {
+      var parsed = new URL(url, window.location.origin);
+      if (!/(^|\.)t\.me$/i.test(parsed.hostname) || parsed.searchParams.has("start")) return parsed.href;
+      var hash = 5381;
+      var source = context.format + "|" + context.scenario;
+      for (var i = 0; i < source.length; i += 1) {
+        hash = ((hash << 5) + hash + source.charCodeAt(i)) | 0;
+      }
+      parsed.searchParams.set("start", "kod_" + context.format + "_" + Math.abs(hash).toString(36));
+      return parsed.href;
+    } catch (_) {
+      return url;
+    }
+  }
+
+  function finalContactNote() {
+    return getDiagnosticContext()
+      ? "После открытия Telegram нажмите «Запустить» — ваш результат будет определён автоматически."
+      : "Откроется выбранный мессенджер. Напишите коротко: «Хочу бесплатную диагностику».";
+  }
+
   function refreshContactLinks() {
     var telegram = document.querySelector(".final-contact-button-telegram");
     var vk = document.querySelector(".final-contact-button-vk");
-    if (telegram) telegram.href = TELEGRAM_URL;
+    var telegramUrl = telegramUrlWithContext(TELEGRAM_URL);
+    if (telegram) telegram.href = telegramUrl;
     if (vk) vk.href = VK_URL;
     document.querySelectorAll('a[href*="t.me"], a[href*="telegram"]').forEach(function (link) {
       if (link.closest(".final-contact-actions") || /telegram/i.test(link.textContent || "")) {
-        link.href = TELEGRAM_URL;
+        link.href = telegramUrl;
       }
     });
     document.querySelectorAll('a[href*="vk.com"], a[href*="vk.ru"]').forEach(function (link) {

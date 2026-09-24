@@ -1,0 +1,360 @@
+:root {
+  --kod-flow-ink: #3b271f;
+  --kod-flow-muted: #72594a;
+  --kod-flow-gold: #b98a48;
+  --kod-flow-gold-soft: #d9ba7f;
+  --kod-flow-paper: #fffdf8;
+  --kod-flow-champagne: #f7efe2;
+  --kod-flow-line: rgba(185, 138, 72, .34);
+}
+
+html.kod-diagnostic-funnel-active #root {
+  display: none;
+}
+
+.kod-diagnostic-funnel[hidden] {
+  display: none;
+}
+
+.kod-diagnostic-funnel {
+  color: var(--kod-flow-ink);
+  font-family: Inter, Arial, sans-serif;
+}
+
+.kod-flow-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: clamp(34px, 5vw, 76px) 24px;
+  background:
+    radial-gradient(circle at 8% 4%, rgba(234, 210, 167, .34), transparent 32rem),
+    linear-gradient(145deg, #fffdf8 0%, #f8f0e4 100%);
+}
+
+.kod-flow-shell {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+}
+
+.kod-flow-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--kod-flow-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.kod-flow-eyebrow,
+.kod-report-label {
+  margin: 0 0 12px;
+  color: #9a6c2d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.kod-flow-heading {
+  max-width: 720px;
+  margin-bottom: 36px;
+}
+
+.kod-flow-heading h1,
+.kod-code-ready h1,
+.kod-report-heading h1 {
+  max-width: 880px;
+  margin: 0;
+  color: var(--kod-flow-ink);
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(38px, 5vw, 66px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: 0;
+}
+
+.kod-flow-heading p,
+.kod-code-ready p,
+.kod-report-invitation p,
+.kod-report-add-code p {
+  margin: 16px 0 0;
+  color: var(--kod-flow-muted);
+  font-size: 17px;
+  line-height: 1.58;
+}
+
+.kod-flow-duration {
+  display: block;
+  margin-top: 14px;
+  color: #8a6c54;
+  font-size: 14px;
+}
+
+.kod-format-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.kod-format-option,
+.kod-profile-form,
+.kod-code-ready,
+.kod-report-grid section,
+.kod-report-steps,
+.kod-report-code,
+.kod-report-add-code,
+.kod-report-invitation {
+  box-sizing: border-box;
+  border: 1px solid var(--kod-flow-line);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(255,255,255,.88), rgba(255,249,239,.78));
+  box-shadow: 0 22px 52px rgba(92, 60, 31, .08), inset 0 1px rgba(255,255,255,.86);
+}
+
+.kod-format-option {
+  display: flex;
+  min-height: 365px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: clamp(28px, 4vw, 46px);
+}
+
+.kod-format-number {
+  color: rgba(164, 116, 48, .76);
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 24px;
+}
+
+.kod-format-option h2,
+.kod-report-invitation h2,
+.kod-report-add-code h2,
+.kod-report-code h2 {
+  margin: 22px 0 0;
+  color: var(--kod-flow-ink);
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.12;
+}
+
+.kod-format-option p {
+  margin: 15px 0 0;
+  color: var(--kod-flow-muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.kod-format-option small {
+  margin: 18px 0 28px;
+  color: #8a6a52;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.kod-flow-button {
+  min-height: 52px;
+  margin-top: auto;
+  padding: 13px 22px;
+  border: 1px solid #a97534;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #c99752, #9b672f);
+  box-shadow: 0 12px 22px rgba(119, 77, 34, .16);
+  color: #fffdf9;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease, background .25s ease;
+}
+
+.kod-flow-button:hover,
+.kod-flow-button:focus-visible {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #d1a45f, #a46d31);
+  box-shadow: 0 16px 30px rgba(119, 77, 34, .22);
+}
+
+.kod-flow-button-secondary {
+  border-color: rgba(154, 108, 45, .56);
+  background: rgba(255, 252, 246, .72);
+  box-shadow: none;
+  color: #6c4728;
+}
+
+.kod-flow-button-secondary:hover,
+.kod-flow-button-secondary:focus-visible {
+  background: rgba(255, 248, 235, .96);
+  box-shadow: 0 12px 26px rgba(119, 77, 34, .1);
+}
+
+.kod-profile-form {
+  display: grid;
+  max-width: 690px;
+  gap: 20px;
+  padding: clamp(26px, 4vw, 44px);
+}
+
+.kod-profile-form label:not(.kod-consent-row) {
+  display: grid;
+  gap: 9px;
+  color: #583d2c;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kod-profile-form input:not([type="checkbox"]) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 15px;
+  border: 1px solid rgba(136, 98, 57, .35);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(255,255,255,.8);
+  color: var(--kod-flow-ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.kod-profile-form input:focus {
+  border-color: var(--kod-flow-gold);
+  box-shadow: 0 0 0 3px rgba(185, 138, 72, .12);
+}
+
+.kod-profile-help,
+.kod-form-error {
+  margin: -3px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.kod-profile-help { color: var(--kod-flow-muted); }
+.kod-form-error { color: #9d443b; }
+
+.kod-consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #654a39;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.kod-consent-row input { margin-top: 4px; accent-color: #a87334; }
+.kod-consent-row a { color: #805726; text-underline-offset: 3px; }
+
+.kod-code-ready {
+  max-width: 760px;
+  padding: clamp(34px, 6vw, 70px);
+  text-align: center;
+}
+
+.kod-code-ready h1 { max-width: 680px; margin: 22px auto 0; font-size: clamp(34px, 4.5vw, 56px); }
+.kod-code-ready p { max-width: 610px; margin-right: auto; margin-left: auto; }
+.kod-code-ready .kod-flow-button { margin-top: 30px; }
+
+.kod-code-seal {
+  display: grid;
+  width: 82px;
+  height: 82px;
+  margin: 0 auto;
+  place-items: center;
+  border: 1px solid #c7984f;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 6px rgba(231, 202, 147, .34), 0 12px 28px rgba(156, 104, 41, .12);
+  color: #865721;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 32px;
+}
+
+.kod-question-progress { max-width: 670px; margin-bottom: 26px; }
+.kod-question-progress span { display: block; margin-bottom: 9px; color: #8e6a48; font-size: 13px; font-weight: 600; }
+.kod-question-progress > div { height: 3px; overflow: hidden; background: rgba(181, 133, 67, .16); }
+.kod-question-progress i { display: block; height: 100%; background: linear-gradient(90deg, #b6823f, #d8b071); transition: width .35s ease; }
+.kod-question-heading { max-width: 800px; margin-bottom: 28px; }
+.kod-question-heading h1 { font-size: clamp(34px, 4.6vw, 58px); }
+
+.kod-question-options {
+  display: grid;
+  max-width: 800px;
+  gap: 11px;
+}
+
+.kod-question-option {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 19px 22px;
+  border: 1px solid rgba(176, 128, 63, .28);
+  border-radius: 7px;
+  background: rgba(255,253,248,.7);
+  color: var(--kod-flow-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .25s cubic-bezier(.22,1,.36,1), border-color .25s ease, background .25s ease, box-shadow .25s ease;
+}
+
+.kod-question-option:hover,
+.kod-question-option:focus-visible,
+.kod-question-option.is-selected {
+  transform: translateX(4px);
+  border-color: rgba(172, 120, 48, .67);
+  background: #fffaf1;
+  box-shadow: 0 12px 28px rgba(103, 64, 26, .08);
+  outline: none;
+}
+
+.kod-question-option strong { font-size: 17px; font-weight: 600; line-height: 1.4; }
+.kod-question-option span { color: var(--kod-flow-muted); font-size: 14px; line-height: 1.45; }
+
+.kod-report-heading { max-width: 850px; margin-bottom: 24px; }
+.kod-report-heading > p { margin: 0 0 12px; color: #9a6c2d; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.kod-report-heading h1 { font-size: clamp(38px, 5.2vw, 64px); }
+.kod-report-summary { max-width: 780px; margin-top: 22px; color: #5a4131; font-size: 18px; line-height: 1.6; }
+
+.kod-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.kod-report-grid section, .kod-report-steps, .kod-report-code, .kod-report-add-code, .kod-report-invitation { padding: clamp(24px, 3.6vw, 38px); }
+.kod-report-grid p:not(.kod-report-label), .kod-report-steps li, .kod-report-code p { margin: 0; color: #624a3a; font-size: 16px; line-height: 1.6; }
+.kod-report-steps { max-width: 850px; margin-top: 16px; }
+.kod-report-steps ol { display: grid; gap: 13px; margin: 16px 0 0; padding-left: 22px; }
+.kod-report-steps li::marker { color: #a5702e; font-weight: 700; }
+.kod-report-code { max-width: 850px; margin-top: 16px; }
+.kod-report-code-number { float: right; margin: -15px 0 8px 20px; color: rgba(177, 125, 53, .55); font-family: "Playfair Display", Georgia, serif; font-size: 86px; line-height: 1; }
+.kod-report-code h2 { margin-top: 2px; }
+.kod-report-code p { margin-top: 15px; }
+.kod-report-add-code, .kod-report-invitation { max-width: 850px; margin-top: 16px; }
+.kod-report-add-code .kod-flow-button, .kod-report-invitation .kod-flow-button { margin-top: 23px; }
+
+@media (max-width: 680px) {
+  .kod-flow-page { padding: 24px 16px 40px; }
+  .kod-flow-back { margin-bottom: 18px; }
+  .kod-flow-heading { margin-bottom: 24px; }
+  .kod-flow-heading h1, .kod-code-ready h1, .kod-report-heading h1 { font-size: 37px; }
+  .kod-flow-heading p, .kod-code-ready p, .kod-report-invitation p, .kod-report-add-code p { font-size: 16px; line-height: 1.5; }
+  .kod-format-options, .kod-report-grid { grid-template-columns: 1fr; gap: 12px; }
+  .kod-format-option { min-height: 0; padding: 26px 22px; }
+  .kod-format-option h2 { margin-top: 16px; font-size: 25px; }
+  .kod-format-option small { margin: 14px 0 22px; }
+  .kod-format-option .kod-flow-button { width: 100%; }
+  .kod-profile-form { gap: 18px; padding: 23px 20px; }
+  .kod-code-ready { padding: 32px 20px; }
+  .kod-question-option { padding: 17px 18px; }
+  .kod-question-option:hover, .kod-question-option:focus-visible, .kod-question-option.is-selected { transform: none; }
+  .kod-question-option strong { font-size: 16px; }
+  .kod-report-summary { font-size: 17px; }
+  .kod-report-grid section, .kod-report-steps, .kod-report-code, .kod-report-add-code, .kod-report-invitation { padding: 23px 20px; }
+  .kod-report-code-number { margin: -5px 0 8px 12px; font-size: 68px; }
+  .kod-report-code h2, .kod-report-invitation h2, .kod-report-add-code h2 { font-size: 25px; }
+  .kod-report-invitation .kod-flow-button, .kod-report-add-code .kod-flow-button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kod-flow-button,
+  .kod-question-option,
+  .kod-question-progress i { transition: none; }
+}
