@@ -136,6 +136,17 @@
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }
 
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function pressThen(button, action) {
+    if (!button || button.dataset.kodPending === "true") return;
+    button.dataset.kodPending = "true";
+    button.classList.add("is-pressed");
+    window.setTimeout(action, prefersReducedMotion() ? 0 : 170);
+  }
+
   function getRoot() {
     var root = document.querySelector(".kod-diagnostic-funnel");
     if (!root) {
@@ -443,23 +454,25 @@
     var formatButtons = root.querySelectorAll("[data-kod-format]");
     formatButtons.forEach(function (button) {
       button.addEventListener("click", function () {
-        state.format = button.getAttribute("data-kod-format");
-        state.stage = state.format === "code" ? "profile" : "questions";
-        state.questionIndex = 0;
-        state.completedQuestions = false;
-        state.answers = Object.assign({}, DEFAULT_ANSWERS);
-        state.code = 0;
-        state.profileError = "";
-        state.consent = false;
-        saveState(state);
-        track(state.format === "code" ? "diagnostic_format_code_selected" : "diagnostic_format_psychology_selected");
-        track("diagnostic_started", { format: state.format });
-        go("/questionnaire");
+        pressThen(button, function () {
+          state.format = button.getAttribute("data-kod-format");
+          state.stage = state.format === "code" ? "profile" : "questions";
+          state.questionIndex = 0;
+          state.completedQuestions = false;
+          state.answers = Object.assign({}, DEFAULT_ANSWERS);
+          state.code = 0;
+          state.profileError = "";
+          state.consent = false;
+          saveState(state);
+          track(state.format === "code" ? "diagnostic_format_code_selected" : "diagnostic_format_psychology_selected");
+          track("diagnostic_started", { format: state.format });
+          go("/questionnaire");
+        });
       });
     });
 
     root.querySelectorAll("[data-kod-action='back']").forEach(function (button) {
-      button.addEventListener("click", function () { routeBack(state); });
+      button.addEventListener("click", function () { pressThen(button, function () { routeBack(state); }); });
     });
 
     var profile = root.querySelector(".kod-profile-form");
@@ -480,55 +493,64 @@
           render();
           return;
         }
-        state.code = calculateCode(state.answers.birthDate);
-        state.stage = "code-ready";
-        saveState(state);
-        track("diagnostic_name_entered");
-        track("diagnostic_birth_date_entered");
-        track("diagnostic_code_calculated", { code: state.code });
-        recordPersonalDataConsent().finally(function () { render(); });
+        pressThen(profile.querySelector("button[type='submit']"), function () {
+          state.code = calculateCode(state.answers.birthDate);
+          state.stage = "code-ready";
+          saveState(state);
+          track("diagnostic_name_entered");
+          track("diagnostic_birth_date_entered");
+          track("diagnostic_code_calculated", { code: state.code });
+          recordPersonalDataConsent().finally(function () { render(); });
+        });
       });
     }
 
     root.querySelectorAll("[data-kod-action='continue-code']").forEach(function (button) {
       button.addEventListener("click", function () {
-        state.stage = state.completedQuestions ? "result" : "questions";
-        saveState(state);
-        go(state.completedQuestions ? "/result" : "/questionnaire");
+        pressThen(button, function () {
+          state.stage = state.completedQuestions ? "result" : "questions";
+          saveState(state);
+          go(state.completedQuestions ? "/result" : "/questionnaire");
+        });
       });
     });
 
     root.querySelectorAll("[data-kod-choice]").forEach(function (button) {
       button.addEventListener("click", function () {
-        var question = QUESTIONS[state.questionIndex];
-        state.answers[question.key] = button.getAttribute("data-kod-choice");
-        track("diagnostic_question_completed", { question: state.questionIndex + 1, key: question.key });
-        if (state.questionIndex < QUESTIONS.length - 1) {
-          state.questionIndex += 1;
+        button.classList.add("is-selected");
+        pressThen(button, function () {
+          var question = QUESTIONS[state.questionIndex];
+          state.answers[question.key] = button.getAttribute("data-kod-choice");
+          track("diagnostic_question_completed", { question: state.questionIndex + 1, key: question.key });
+          if (state.questionIndex < QUESTIONS.length - 1) {
+            state.questionIndex += 1;
+            saveState(state);
+            render();
+            return;
+          }
+          state.completedQuestions = true;
+          state.stage = "result";
           saveState(state);
-          window.setTimeout(render, 140);
-          return;
-        }
-        state.completedQuestions = true;
-        state.stage = "result";
-        saveState(state);
-        track(state.format === "code" ? "diagnostic_result_with_code_opened" : "diagnostic_psychology_result_opened");
-        window.setTimeout(function () { go("/result"); }, 140);
+          track(state.format === "code" ? "diagnostic_result_with_code_opened" : "diagnostic_psychology_result_opened");
+          go("/result");
+        });
       });
     });
 
     root.querySelectorAll("[data-kod-action='add-code']").forEach(function (button) {
       button.addEventListener("click", function () {
-        state.format = "code";
-        state.stage = "profile";
-        saveState(state);
-        track("diagnostic_add_personal_code_clicked");
-        go("/questionnaire");
+        pressThen(button, function () {
+          state.format = "code";
+          state.stage = "profile";
+          saveState(state);
+          track("diagnostic_add_personal_code_clicked");
+          go("/questionnaire");
+        });
       });
     });
 
     root.querySelectorAll("[data-kod-action='lead']").forEach(function (button) {
-      button.addEventListener("click", function () { openLead(state); });
+      button.addEventListener("click", function () { pressThen(button, function () { openLead(state); }); });
     });
   }
 
@@ -558,6 +580,12 @@
     else if (state.stage === "code-ready") root.innerHTML = codeReadyPage(state);
     else root.innerHTML = questionPage(state);
     bindEvents(root, state);
+    if (!prefersReducedMotion()) {
+      root.classList.remove("is-entering");
+      void root.offsetWidth;
+      root.classList.add("is-entering");
+      window.setTimeout(function () { root.classList.remove("is-entering"); }, 560);
+    }
   }
 
   function interceptLandingStart(event) {
